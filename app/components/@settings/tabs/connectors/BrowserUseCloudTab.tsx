@@ -119,7 +119,7 @@ export default function BrowserUseCloudTab() {
         <div>
           <h2 className="text-lg font-medium text-bolt-elements-textPrimary">Browser Use Cloud</h2>
           <p className="mt-1 text-sm text-bolt-elements-textSecondary">
-            Give Bolt hosted browser tools for visiting websites, interacting with pages, and reporting results.
+            Give Koadr hosted browser tools for visiting websites, interacting with pages, and reporting results.
           </p>
         </div>
       </div>
@@ -164,7 +164,7 @@ export default function BrowserUseCloudTab() {
             >
               Browser Use settings
             </a>
-            . The key is saved in Bolt’s MCP settings in this browser.
+            . The key is saved in Koadr’s MCP settings in this browser.
           </p>
         </div>
 
@@ -212,7 +212,7 @@ export default function BrowserUseCloudTab() {
           <div className="mb-4">
             <h3 className="text-sm font-semibold text-bolt-elements-textPrimary">Action permissions</h3>
             <p className="mt-1 text-xs text-bolt-elements-textSecondary">
-              Choose which Browser Use actions Bolt can access. Enabled actions still ask before each run.
+              Choose which Browser Use actions Koadr can access. Enabled actions still ask before each run.
             </p>
           </div>
           <div className="space-y-2">
@@ -245,7 +245,7 @@ export default function BrowserUseCloudTab() {
       <div className="rounded-xl border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 p-5">
         <h3 className="mb-2 text-sm font-semibold text-bolt-elements-textPrimary">Using the connector</h3>
         <p className="text-sm text-bolt-elements-textSecondary">
-          Once connected, Browser Use tools appear with your other MCP tools in chat. Ask Bolt to use Browser Use Cloud
+          Once connected, Browser Use tools appear with your other MCP tools in chat. Ask Koadr to use Browser Use Cloud
           for a task; starting a hosted browser run may incur usage charges with Browser Use.
         </p>
       </div>

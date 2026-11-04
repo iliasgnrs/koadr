@@ -41,7 +41,7 @@ type Draft = {
   version: string;
 };
 
-const MARKETPLACE_URL = 'https://github.com/dustinwloring1988/bolt-marketplace';
+const MARKETPLACE_URL = 'https://github.com/iliasgnrs/koadr';
 const CATEGORIES = pluginCategorySchema.options;
 
 const buttonClass =
@@ -151,7 +151,7 @@ export default function PluginTab() {
     id: 'boltdiy.text-utilities',
     name: 'Text Utilities',
     description: 'Count and transform text with deterministic tools.',
-    publisher: 'Bolt.diy',
+    publisher: 'Koadr',
     license: 'MIT',
     category: 'Productivity',
     version: '1.0.0',
@@ -373,7 +373,7 @@ export default function PluginTab() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-purple-400">Extensions</p>
               <h2 className="mt-1 text-2xl font-semibold text-bolt-elements-textPrimary">Plugin Marketplace</h2>
               <p className="mt-1 max-w-2xl text-sm text-bolt-elements-textSecondary">
-                Discover and manage reviewed plugins from the Bolt marketplace.
+                Discover and manage reviewed plugins from the plugin marketplace.
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -954,7 +954,7 @@ function DeveloperWizard({
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-purple-400">Extensions</p>
           <h2 className="mt-1 text-2xl font-semibold text-bolt-elements-textPrimary">Develop Plugin</h2>
           <p className="mt-1 text-sm text-bolt-elements-textSecondary">
-            Create a validated draft for a supported Bolt adapter.
+            Create a validated draft for a supported Koadr adapter.
           </p>
         </div>
         <button type="button" onClick={onCancel} className={buttonClass}>

@@ -538,6 +538,58 @@ describe('automatic tool choice recovery', () => {
   });
 });
 
+describe('tool markup recovery', () => {
+  const tools = () => ({
+    project_get_process_output: tool({
+      inputSchema: jsonSchema({
+        type: 'object',
+        properties: { processId: { type: 'string' } },
+        required: ['processId'],
+        additionalProperties: false,
+      }),
+    }),
+  });
+
+  const markupReply = (markup: string) =>
+    new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'stream-start', warnings: [] });
+            controller.enqueue({ type: 'text-start', id: 't' });
+            controller.enqueue({ type: 'text-delta', id: 't', delta: markup });
+            controller.enqueue({ type: 'text-end', id: 't' });
+            finish(controller);
+          },
+        }),
+      }),
+    });
+
+  it.each([
+    '<||DSML|| invoke name="project_get_process_output"><||DSML|| parameter name="processId" string="true">p-1<||DSML|| parameter></||DSML|| invoke>',
+    '<antml:invoke name="project_get_process_output"><antml:parameter name="processId" string="true">p-1</antml:parameter></antml:invoke>',
+  ])('recovers a tool call printed as provider markup', async (markup) => {
+    const result = await streamText({
+      model: withAgentToolCallRecovery(withAgentStreamDeadlines(markupReply(markup)), vi.fn()),
+      prompt: 'Poll the running command.',
+      toolChoice: 'auto',
+      tools: tools(),
+      stopWhen: isStepCount(2),
+    });
+
+    const chunks = await collect(result);
+    expect(chunks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'tool-input-available', toolName: 'project_get_process_output' }),
+      ]),
+    );
+
+    // The raw markup must not reach the UI; only the recovered call and any prose may.
+    const rendered = JSON.stringify(chunks);
+    expect(rendered).not.toMatch(/\|\|DSML\|\||antml:invoke|antml:parameter/);
+  });
+});
+
 describe('wrapped model identity', () => {
   /*
    * Regression: the wrappers used to spread the model into a new object, which

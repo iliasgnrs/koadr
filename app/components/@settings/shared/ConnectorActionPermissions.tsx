@@ -36,7 +36,7 @@ export function ConnectorActionPermissions({ connector, actions }: ConnectorActi
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-bolt-elements-textPrimary">Action permissions</h3>
         <p className="mt-1 text-xs text-bolt-elements-textSecondary">
-          Choose which {connector[0].toUpperCase() + connector.slice(1)} actions Bolt can access.
+          Choose which {connector[0].toUpperCase() + connector.slice(1)} actions Koadr can access.
         </p>
       </div>
       <div className="space-y-2">

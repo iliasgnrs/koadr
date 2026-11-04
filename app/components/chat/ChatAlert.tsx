@@ -15,8 +15,8 @@ export default function ChatAlert({ alert, clearAlert, postMessage }: Props) {
   const title = isPreview ? 'Preview Error' : 'Terminal Error';
 
   const message = isPreview
-    ? 'We encountered an error while running the preview. Would you like Bolt to analyze and help resolve this issue?'
-    : 'We encountered an error while running terminal commands. Would you like Bolt to analyze and help resolve this issue?';
+    ? 'We encountered an error while running the preview. Would you like Koadr to analyze and help resolve this issue?'
+    : 'We encountered an error while running terminal commands. Would you like Koadr to analyze and help resolve this issue?';
 
   return (
     <AnimatePresence>
@@ -85,7 +85,7 @@ export default function ChatAlert({ alert, clearAlert, postMessage }: Props) {
                   )}
                 >
                   <div className="i-ph:chat-circle-duotone"></div>
-                  Ask Bolt
+                  Ask Koadr
                 </button>
                 <button
                   onClick={clearAlert}

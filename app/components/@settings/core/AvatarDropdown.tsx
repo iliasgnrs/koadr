@@ -118,9 +118,7 @@ export const AvatarDropdown = ({ onSelectTab, onOpenDocs }: AvatarDropdownProps)
               'outline-none',
               'group',
             )}
-            onClick={() =>
-              window.open('https://github.com/stackblitz-labs/bolt.diy/issues/new?template=bug_report.yml', '_blank')
-            }
+            onClick={() => window.open('https://github.com/iliasgnrs/koadr/issues/new', '_blank')}
           >
             <div className="i-ph:bug w-4 h-4 text-gray-400 group-hover:text-purple-500 dark:group-hover:text-purple-400 transition-colors" />
             Report Bug

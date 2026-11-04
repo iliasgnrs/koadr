@@ -109,7 +109,7 @@ export async function activateConnector(connector: ConnectorActivationId, entere
       }
 
       const response = await fetch('https://api.netlify.com/api/v1/user', {
-        headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Bolt.diy' },
+        headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'Koadr' },
       });
 
       if (!response.ok) {

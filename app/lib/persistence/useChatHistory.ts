@@ -245,7 +245,7 @@ export function useChatHistory({ loadHistory = true }: { loadHistory?: boolean }
               // Call the modified function to get only the command actions string
               const commandActionsString = createCommandActionsString(projectCommands);
 
-              const restoredAssistantText = `Bolt Restored your chat from a snapshot. You can revert this message to load the full chat history.
+              const restoredAssistantText = `Koadr Restored your chat from a snapshot. You can revert this message to load the full chat history.
                   <boltArtifact id="restored-project-setup" title="Restored Project & Setup" type="bundled">
                   ${Object.entries(snapshot?.files || {})
                     .map(([key, value]) => {

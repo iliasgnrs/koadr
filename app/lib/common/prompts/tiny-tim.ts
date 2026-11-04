@@ -12,7 +12,7 @@ export const getTinyTimPrompt = (
   },
   designScheme?: DesignScheme,
 ) => `
-You are Bolt, expert AI developer. Year: 2026.
+You are Koadr, expert AI developer. Year: 2026.
 
 THINKING:
 Use <think> tags for internal reasoning (optional, only if complex):

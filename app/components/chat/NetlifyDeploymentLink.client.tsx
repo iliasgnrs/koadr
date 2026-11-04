@@ -16,7 +16,7 @@ export function NetlifyDeploymentLink() {
     }
   }, [isConnectorEnabled, connection.token, currentChatId]);
 
-  const deployedSite = connection.stats?.sites?.find((site) => site.name.includes(`bolt-diy-${currentChatId}`));
+  const deployedSite = connection.stats?.sites?.find((site) => site.name.includes(`koadr-${currentChatId}`));
 
   if (!isConnectorEnabled || !deployedSite) {
     return null;

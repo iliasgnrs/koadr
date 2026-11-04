@@ -30,7 +30,7 @@ async function vercelUserLoader({ request, context }: { request: Request; contex
     const response = await fetch('https://api.vercel.com/v2/user', {
       headers: {
         Authorization: `Bearer ${vercelToken}`,
-        'User-Agent': 'bolt.diy-app',
+        'User-Agent': 'koadr-app',
       },
     });
 
@@ -109,7 +109,7 @@ async function vercelUserAction({ request, context }: { request: Request; contex
       const response = await fetch('https://api.vercel.com/v13/projects', {
         headers: {
           Authorization: `Bearer ${vercelToken}`,
-          'User-Agent': 'bolt.diy-app',
+          'User-Agent': 'koadr-app',
         },
       });
 

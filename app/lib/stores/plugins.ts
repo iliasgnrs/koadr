@@ -110,7 +110,7 @@ export const usePluginStore = create<PluginStore>((set, get) => ({
       const manifest = pluginManifestSchema.parse(input.manifest);
 
       if (!isSupportedAdapter(manifest)) {
-        throw new Error('This plugin requires an adapter that is not supported by this version of Bolt.');
+        throw new Error('This plugin requires an adapter that is not supported by this version of Koadr.');
       }
 
       const existing = await pluginDatabase.get(manifest.id);

@@ -10,7 +10,7 @@ export const getSimpleSalPrompt = (
   },
   designScheme?: DesignScheme,
 ) => `
-You are Bolt, an expert AI assistant and senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices, created by StackBlitz.
+You are Koadr, an expert AI assistant and senior software developer with vast knowledge across multiple programming languages, frameworks, and best practices, created by StackBlitz.
 
 <checklist>Thinking</checklist>
 - What does the user want?

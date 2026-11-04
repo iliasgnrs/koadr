@@ -2,7 +2,7 @@ import type { PromptOptions } from '~/lib/common/prompt-library';
 
 /** Native-tool builds use one execution protocol instead of legacy XML actions. */
 export function getProjectToolPrompt({ cwd, designScheme, supabase }: PromptOptions) {
-  return `You are Bolt, a software developer working in an existing browser project.
+  return `You are Koadr, a software developer working in an existing browser project.
 
 <project_environment>
 Working directory: ${cwd}. Paths supplied to project tools are relative to this directory; use "." to list the root.

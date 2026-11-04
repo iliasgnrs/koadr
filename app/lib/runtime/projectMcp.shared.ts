@@ -100,7 +100,7 @@ export const projectToolDefinitions: Record<ProjectToolName, { description: stri
   },
   project_run_command: {
     description:
-      'Run a shell command in the active WebContainer project and stream its output to Bolt Terminal. Set purpose to run, test, install, or other. A test passes only when it exits with code 0; poll project_get_process_output for running commands before dependent work. Returns process ID, command, purpose, output, exit status, and previewReady. Commands require user approval.',
+      'Run a shell command in the active WebContainer project and stream its output to Koadr Terminal. Set purpose to run, test, install, or other. A test passes only when it exits with code 0; poll project_get_process_output for running commands before dependent work. Returns process ID, command, purpose, output, exit status, and previewReady. Commands require user approval.',
     inputSchema: objectSchema(
       {
         command: { type: 'string', minLength: 1, maxLength: 4000 },

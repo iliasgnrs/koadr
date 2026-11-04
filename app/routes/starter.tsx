@@ -5,7 +5,7 @@ import { Header } from '~/components/header/Header';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
 
-export const meta: MetaFunction = () => [{ title: 'Start a blank app | Bolt' }];
+export const meta: MetaFunction = () => [{ title: 'Start a blank app | Koadr' }];
 
 export default function Starter() {
   return (

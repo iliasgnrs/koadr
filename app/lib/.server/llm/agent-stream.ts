@@ -142,14 +142,20 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
 
                 /*
                  * Under `auto` the model may answer in text, which is legitimate; only
-                 * JSON that names a real tool is treated as a failed call.
+                 * JSON or tool markup that names a real tool is treated as a failed call.
                  */
-                const calls = recoverJsonToolCalls(
-                  text,
-                  params.tools,
-                  choice.type === 'auto' ? undefined : choice,
-                  choice.type === 'auto',
+                const recoveryChoice = choice.type === 'auto' ? undefined : choice;
+                const allowAnyAvailable = choice.type === 'auto';
+
+                const available = new Set(
+                  params.tools?.filter((tool) => tool.type === 'function').map((tool) => tool.name),
                 );
+
+                const markupCalls = recoverMarkupToolCalls(text, available, allowAnyAvailable, recoveryChoice);
+
+                const calls = markupCalls.length
+                  ? markupCalls
+                  : recoverJsonToolCalls(text, params.tools, recoveryChoice, allowAnyAvailable);
 
                 const finish = buffered.find((part) => part.type === 'finish');
 
@@ -187,6 +193,7 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
               for (const part of buffered) {
                 controller.enqueue(part);
               }
+
               controller.close();
 
               return;
@@ -208,6 +215,78 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
       }),
     };
   });
+}
+
+/**
+ * Some models print tool calls as provider-specific markup instead of using the
+ * native tool interface, e.g.
+ *
+ *   <||DSML|| invoke name="project_get_process_output">
+ *   <||DSML|| parameter name="processId" string="true">abc<||DSML|| parameter>
+ *   </||DSML|| invoke>
+ *
+ * The delimiters vary (`<||DSML||`, `antml:`, plain XML), so match on the tag
+ * names. Well-formed calls are worth rescuing: the alternative is a turn that
+ * only renders text and never runs the command.
+ */
+const TOOL_MARKUP_PREFIX = '(?:\\|\\|\\s*)?(?:(?:DSML|antml)\\|\\|\\s*|antml:)?';
+
+const TOOL_MARKUP_BLOCK = new RegExp(
+  `<${TOOL_MARKUP_PREFIX}invoke\\b[^>]*>[\\s\\S]*?</${TOOL_MARKUP_PREFIX}invoke>`,
+  'g',
+);
+const TOOL_MARKUP_PARAMETER = new RegExp(
+  `<${TOOL_MARKUP_PREFIX}parameter\\b[^>]*\\bname\\s*=\\s*"([^"]+)"[^>]*>([\\s\\S]*?)</${TOOL_MARKUP_PREFIX}parameter>`,
+  'g',
+);
+
+function coerceMarkupValue(raw: string, isString: boolean): unknown {
+  const value = raw.trim();
+
+  if (isString) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function recoverMarkupToolCalls(
+  text: string,
+  available: Set<string>,
+  allowAnyAvailable: boolean,
+  choice?: { type: 'required' } | { type: 'tool'; toolName: string },
+): Array<{ name: string; input: Record<string, unknown> }> {
+  const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
+
+  for (const block of text.match(TOOL_MARKUP_BLOCK) ?? []) {
+    const name = block.match(/\binvoke\b[^>]*\bname\s*=\s*"([^"]+)"/)?.[1];
+
+    if (!name || !available.has(name)) {
+      return [];
+    }
+
+    const input: Record<string, unknown> = {};
+
+    for (const parameter of block.matchAll(TOOL_MARKUP_PARAMETER)) {
+      input[parameter[1]] = coerceMarkupValue(parameter[2], /\bstring\s*=\s*"true"/.test(parameter[0]));
+    }
+
+    calls.push({ name, input });
+  }
+
+  if (!calls.length || calls.length > MAX_RECOVERED_CALLS) {
+    return [];
+  }
+
+  if (allowAnyAvailable) {
+    return calls;
+  }
+
+  return choice?.type === 'required' || calls.some((call) => call.name === choice?.toolName) ? calls : [];
 }
 
 /**

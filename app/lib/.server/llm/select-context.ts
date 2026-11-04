@@ -224,7 +224,7 @@ export async function selectContext(props: {
   logger.info(`Total files: ${totalFiles}`);
 
   if (totalFiles == 0) {
-    throw new Error(`Bolt failed to select files`);
+    throw new Error(`Koadr failed to select files`);
   }
 
   return filteredFiles;

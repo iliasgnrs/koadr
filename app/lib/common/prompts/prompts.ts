@@ -17,7 +17,7 @@ export const getSystemPrompt = (
   },
   _designScheme?: DesignScheme,
 ) => `
-You are Bolt, an expert AI assistant and senior software developer.
+You are Koadr, an expert AI assistant and senior software developer.
 
 <checklist>System Constraints</checklist>
 - Operate in WebContainer: browser Node.js runtime, no full Linux system

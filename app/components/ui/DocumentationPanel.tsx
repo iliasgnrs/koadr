@@ -6,7 +6,7 @@ import { getThemeMode } from '~/types/theme';
 
 const credentiallessIframeAttributes = { credentialless: 'true' };
 
-const DOCUMENTATION_URL = 'https://stackblitz-labs.github.io/bolt.diy/';
+const DOCUMENTATION_URL = 'https://github.com/iliasgnrs/koadr';
 
 interface DocumentationPanelProps {
   open: boolean;
@@ -28,7 +28,7 @@ export function DocumentationPanel({ open, onClose }: DocumentationPanelProps) {
                 <div className="i-ph:book-open-text h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <Dialog.Title className="truncate text-sm font-semibold">bolt.diy Manual</Dialog.Title>
+                <Dialog.Title className="truncate text-sm font-semibold">Koadr Manual</Dialog.Title>
                 <Dialog.Description className="truncate text-xs text-bolt-elements-textSecondary">
                   Product documentation and guides
                 </Dialog.Description>
@@ -59,7 +59,7 @@ export function DocumentationPanel({ open, onClose }: DocumentationPanelProps) {
 
           <iframe
             {...credentiallessIframeAttributes}
-            title="bolt.diy documentation"
+            title="Koadr documentation"
             src={open ? documentationUrl : 'about:blank'}
             className="min-h-0 w-full flex-1 border-0 bg-bolt-elements-background-depth-1"
             referrerPolicy="strict-origin-when-cross-origin"

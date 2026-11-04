@@ -66,7 +66,7 @@ export function PerformanceDashboard({ onClose }: { onClose?: () => void }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `bolt-performance-${Date.now()}.json`;
+    a.download = `koadr-performance-${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
