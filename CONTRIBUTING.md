@@ -1,6 +1,6 @@
 # Contribution Guidelines
 
-Welcome! This guide provides all the details you need to contribute effectively to the project. Thank you for helping us make **bolt.diy** a better tool for developers worldwide. 💡
+Welcome! This guide provides all the details you need to contribute effectively to the project. Thank you for helping us make **Koadr** a better tool for developers worldwide. 💡
 
 ---
 
@@ -81,7 +81,7 @@ Interested in maintaining and growing the project? Fill out our [Contributor App
 - Prerequisites: **Node.js >= 22.12.0** and **pnpm >= 9.15.9**.
 - Clone the repository:
   ```bash
-  git clone https://github.com/stackblitz-labs/bolt.diy.git
+  git clone https://github.com/stackblitz-labs/Koadr.git
   ```
 - Install dependencies:
   ```bash
@@ -170,7 +170,7 @@ npm run dockerbuild
 **Option 2: Direct Docker Build Command**
 
 ```bash
-docker build . --target bolt-ai-development
+docker build . --target koadr-development
 ```
 
 **Option 3: Docker Compose Profile**
@@ -182,7 +182,7 @@ docker compose --profile development up
 #### Running the Development Container
 
 ```bash
-docker run -p 5173:5173 --env-file .env.local bolt-ai:development
+docker run -p 5173:5173 --env-file .env.local koadr:development
 ```
 
 ---
@@ -201,7 +201,7 @@ npm run dockerbuild:prod
 **Option 2: Direct Docker Build Command**
 
 ```bash
-docker build . --target bolt-ai-production
+docker build . --target koadr-production
 ```
 
 **Option 3: Docker Compose Profile**
@@ -213,7 +213,7 @@ docker compose --profile production up
 #### Running the Production Container
 
 ```bash
-docker run -p 5173:5173 --env-file .env.local bolt-ai:production
+docker run -p 5173:5173 --env-file .env.local koadr:production
 ```
 
 ---

@@ -1,16 +1,18 @@
-# bolt.diy
+# Koadr
 
-[![bolt.diy: AI-Powered Full-Stack Web Development in the Browser](./public/social_preview_index(1).jpg)](https://bolt.diy)
+[![Koadr — Prompt it. Build it. Ship it.](./public/social_preview_index.jpg)](https://koadr.iliasgnrs.workers.dev)
 
-Welcome to **bolt.diy**, the open-source AI developer workspace that lets you select your preferred LLM for every prompt. Build full-stack web applications in the browser with support for 22+ model providers (OpenAI, Anthropic, Gemini, Groq, xAI, DeepSeek, Ollama, LM Studio, and more), or extend it with any provider supported by the Vercel AI SDK. OpenRouter, Anthropic, OpenAI, and Google are enabled by default; enable and configure other providers in Settings.
+**Koadr** is an open-architecture, agentic AI workspace that turns natural language into
+production-ready full-stack applications instantly inside your browser. No local setup,
+no limits — just prompt it, build it, ship it.
 
-[Documentation](https://stackblitz-labs.github.io/bolt.diy/) | [Community Forum](https://thinktank.ottomator.ai) | [FAQ & Troubleshooting](FAQ.md)
+Koadr is model-agnostic: bring your own keys (DeepSeek, Claude, OpenAI, Gemini, Groq,
+Ollama, LM Studio and more) and run Node.js in the browser through WebContainers.
 
----
-
-Also [this pinned post in our community](https://thinktank.ottomator.ai/t/videos-tutorial-helpful-content/3243) has a bunch of incredible resources for running and deploying bolt.diy yourself!
-
-bolt.diy was originally started by [Cole Medin](https://www.youtube.com/@ColeMedin) but has quickly grown into a massive community effort to build the BEST open source AI coding assistant!
+- **Live app**: [koadr.iliasgnrs.workers.dev](https://koadr.iliasgnrs.workers.dev)
+- **FAQ**: [FAQ.md](FAQ.md)
+- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Agent streaming notes**: [docs/koadr/agent-streaming-fixes.md](docs/koadr/agent-streaming-fixes.md)
 
 ---
 
@@ -37,8 +39,8 @@ bolt.diy was originally started by [Cole Medin](https://www.youtube.com/@ColeMed
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/stackblitz-labs/bolt.diy.git
-cd bolt.diy
+git clone https://github.com/iliasgnrs/koadr.git
+cd koadr
 pnpm install
 ```
 
@@ -48,9 +50,9 @@ pnpm install
 pnpm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser. To run the exact Cloudflare worker runtime locally, use `pnpm run cf:dev` and open [http://localhost:8787](http://localhost:8787).
 
-> **Pre-built Desktop Binaries**: Prefer a standalone app? Download binaries for Windows, macOS, and Linux from our [Latest Releases](https://github.com/stackblitz-labs/bolt.diy/releases/latest).
+> **Pre-built Desktop Binaries**: Prefer a standalone app? Download binaries for Windows, macOS, and Linux from our [Latest Releases](https://github.com/iliasgnrs/koadr/releases/latest).
 
 ---
 
@@ -75,9 +77,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ## Desktop App (Electron)
 
-bolt.diy is also available as a cross-platform desktop application:
+Koadr is also available as a cross-platform desktop application:
 
-- **Download**: Grab pre-built installers from [Latest Releases](https://github.com/stackblitz-labs/bolt.diy/releases/latest).
+- **Download**: Grab pre-built installers from [Latest Releases](https://github.com/iliasgnrs/koadr/releases/latest).
 - **Build from Source**:
   ```bash
   pnpm electron:build:dist
@@ -152,11 +154,11 @@ LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 ## Contributing & Community
 
 - **Contributing**: Contributions are welcome! Read our [Contributing Guide](CONTRIBUTING.md) and [Project Management Guide](./PROJECT.md) to get started.
-- **Troubleshooting & FAQ**: Common errors and setup fixes are documented in our [FAQ](FAQ.md) and [Official Docs](https://stackblitz-labs.github.io/bolt.diy/).
+- **Troubleshooting & FAQ**: Common errors and setup fixes are documented in our [FAQ](FAQ.md) and the [agent streaming notes](docs/koadr/agent-streaming-fixes.md).
 
 
 ---
 
 ## Licensing
 
-bolt.diy is open-source under the MIT License. It utilizes the [WebContainers API](https://webcontainers.io/enterprise), which has specific commercial licensing terms for enterprise deployment.
+Koadr is open-source under the MIT License. It utilizes the [WebContainers API](https://webcontainers.io/enterprise), which has specific commercial licensing terms for enterprise deployment.

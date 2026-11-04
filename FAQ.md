@@ -1,23 +1,23 @@
 # Frequently Asked Questions (FAQ)
 
 <details>
-<summary><strong>What are the best models for bolt.diy?</strong></summary>
+<summary><strong>What are the best models for Koadr?</strong></summary>
 
 Available models and their capabilities change over time. Choose a capable coding model with a context window large enough for your project; use a faster, smaller model for quick edits or when cost and latency matter. For private or offline work, configure a local provider such as Ollama or LM Studio. Check the model catalog in Settings for the options currently available from your configured providers.
 
 </details>
 
 <details>
-<summary><strong>How do I get the best results with bolt.diy?</strong></summary>
+<summary><strong>How do I get the best results with Koadr?</strong></summary>
 
 - **Be specific about your stack**:  
-  Mention the frameworks or libraries you want to use (e.g., Astro, Tailwind, ShadCN) in your initial prompt. This ensures that bolt.diy scaffolds the project according to your preferences.
+  Mention the frameworks or libraries you want to use (e.g., Astro, Tailwind, ShadCN) in your initial prompt. This ensures that Koadr scaffolds the project according to your preferences.
 
 - **Use the enhance prompt icon**:  
   Before sending your prompt, click the _enhance_ icon to let the AI refine your prompt. You can edit the suggested improvements before submitting.
 
 - **Scaffold the basics first, then add features**:  
-  Ensure the foundational structure of your application is in place before introducing advanced functionality. This helps bolt.diy establish a solid base to build on.
+  Ensure the foundational structure of your application is in place before introducing advanced functionality. This helps Koadr establish a solid base to build on.
 
 - **Batch simple instructions**:  
   Combine simple tasks into a single prompt to save time and reduce API credit consumption. For example:  
@@ -25,14 +25,14 @@ Available models and their capabilities change over time. Choose a capable codin
 </details>
 
 <details>
-<summary><strong>How do I contribute to bolt.diy?</strong></summary>
+<summary><strong>How do I contribute to Koadr?</strong></summary>
 
 Check out our [Contribution Guide](CONTRIBUTING.md) for more details on how to get involved!
 
 </details>
 
 <details>
-<summary><strong>What are the future plans for bolt.diy?</strong></summary>
+<summary><strong>What are the future plans for Koadr?</strong></summary>
 
 Visit our [Roadmap](https://roadmap.sh/r/ottodev-roadmap-2ovzo) for the latest updates.  
 New features and improvements are on the way!
@@ -42,14 +42,15 @@ New features and improvements are on the way!
 <details>
 <summary><strong>Why are there so many open issues/pull requests?</strong></summary>
 
-bolt.diy began as a small showcase project on @ColeMedin's YouTube channel to explore editing open-source projects with local LLMs. However, it quickly grew into a massive community effort!
+Koadr is a browser-based agentic workspace built on the open-source WebContainer
+stack. It runs as a Cloudflare Worker, so the app and its API share one deployment.
 
-We're forming a team of maintainers to manage demand and streamline issue resolution. The maintainers are rockstars, and we're also exploring partnerships to help the project thrive.
+Issues and feature requests are tracked in [this repository](https://github.com/iliasgnrs/koadr/issues).
 
 </details>
 
 <details>
-<summary><strong>How do local LLMs compare to hosted models for bolt.diy?</strong></summary>
+<summary><strong>How do local LLMs compare to hosted models for Koadr?</strong></summary>
 
 Local models can provide privacy and offline access, while larger hosted models often handle complex projects more reliably. Performance depends on the model, available context, and your hardware. Try a small task first, then choose the model that best fits your quality, privacy, cost, and speed needs.
 
@@ -88,7 +89,7 @@ Configure a server under **Settings → Integrations → MCP Servers**. In the p
 If you're having trouble with MCP integrations:
 - Verify server configuration in Settings → Integrations → MCP Servers
 - Check server endpoints and authentication credentials
-- Test server connectivity outside of bolt.diy
+- Test server connectivity outside of Koadr
 - Review MCP server logs for specific errors
 - Ensure server supports the MCP protocol version
 
@@ -131,7 +132,7 @@ Local LLMs can work well for smaller applications, while larger hosted models ma
 **Windows-specific issue**: Update the [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170).
 
 ### **"Miniflare or Wrangler errors in Windows"**
-**Windows development environment**: Install Visual Studio C++ (version 14.40.33816 or later). More details in [GitHub Issues](https://github.com/stackblitz-labs/bolt.diy/issues/19).
+**Windows development environment**: Install Visual Studio C++ (version 14.40.33816 or later). More details in [GitHub Issues](https://github.com/stackblitz-labs/Koadr/issues/19).
 
 </details>
 

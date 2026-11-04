@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Bolt.new related issues
-    url: https://github.com/stackblitz/bolt.new/issues/new/choose
-    about: Report issues related to Bolt.new (not Bolt.diy)
-  - name: Chat
-    url: https://thinktank.ottomator.ai
-    about: Ask questions and discuss with other Bolt.diy users.
+  - name: Live app
+    url: https://koadr.iliasgnrs.workers.dev
+    about: Try Koadr in the browser before opening an issue.
+  - name: FAQ & troubleshooting
+    url: https://github.com/iliasgnrs/koadr/blob/main/FAQ.md
+    about: Common errors and how to fix them.
