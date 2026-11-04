@@ -29,11 +29,14 @@
 }
 
 .PromptEffectLine {
+  /* Follow the active theme's accent instead of a fixed purple. */
+  color: var(--bolt-elements-borderColorActive);
   width: calc(100% - var(--prompt-container-offset) + var(--prompt-line-stroke-width));
   height: calc(100% - var(--prompt-container-offset) + var(--prompt-line-stroke-width));
   x: calc(var(--prompt-container-offset) / 2 - var(--prompt-line-stroke-width) / 2);
   y: calc(var(--prompt-container-offset) / 2 - var(--prompt-line-stroke-width) / 2);
-  rx: calc(8px - var(--prompt-line-stroke-width));
+  /* Koadr uses square corners everywhere; keep the stroke aligned with the panel. */
+  rx: 0;
   fill: transparent;
   stroke-width: var(--prompt-line-stroke-width);
   stroke: url(#line-gradient);
