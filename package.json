@@ -1,7 +1,7 @@
 {
   "name": "koadr",
   "description": "Koadr — Prompt it. Build it. Ship it. An open-architecture, agentic AI workspace that turns natural language into production-ready full-stack applications in the browser.",
-  "private": true,
+  "private": false,
   "license": "MIT",
   "sideEffects": false,
   "type": "module",

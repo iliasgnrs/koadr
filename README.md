@@ -161,4 +161,13 @@ LMSTUDIO_BASE_URL=http://127.0.0.1:1234
 
 ## Licensing
 
-Koadr is open-source under the MIT License. It utilizes the [WebContainers API](https://webcontainers.io/enterprise), which has specific commercial licensing terms for enterprise deployment.
+Koadr is released under the [MIT License](LICENSE) — you are free to use, copy, modify,
+merge, publish, distribute, sublicense and sell copies of it, provided the copyright
+notice and permission notice are kept.
+
+Koadr runs on the [WebContainers API](https://webcontainers.io/enterprise), which has its
+own commercial licensing terms for enterprise deployment. If you fork Koadr for a
+commercial product, review those terms separately — they are not covered by this
+project's MIT license.
+
+Koadr is an independent project and is not affiliated with StackBlitz, bolt.diy or ΓΕΜΗ.
