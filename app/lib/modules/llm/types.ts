@@ -31,6 +31,21 @@ export interface ProviderInfo {
   getApiKeyLink?: string;
   labelForGetApiKey?: string;
   icon?: string;
+
+  /**
+   * Whether the model accepts a forced `tool_choice` (`required` or a named tool).
+   *
+   * Thinking-enabled models reject the request instead of ignoring the hint
+   * (DeepSeek V4 answers 400 "Thinking mode does not support this tool_choice"),
+   * so callers fall back to `auto` for these models.
+   */
+  supportsToolChoice?: (model: string) => boolean;
+
+  /**
+   * Practical default for `maxOutputTokens`, used when the model's published
+   * ceiling is far above what a single response should request.
+   */
+  getCompletionTokenLimitHint?: () => number;
 }
 export interface ProviderConfig {
   baseUrlKey?: string;

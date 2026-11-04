@@ -32,6 +32,7 @@ import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/c
 import { getAgentLoopInstructions, getAgentLoopProgress } from '~/lib/common/agentLoop';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { getStarterBuildProgress } from '~/lib/common/starterBuild';
+import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
 import { getPluginToolDescriptions, getPluginTools } from '~/lib/plugins/adapters';
 import { getProjectToolNames, projectToolDefinitions } from '~/lib/runtime/projectMcp.shared';
@@ -308,11 +309,18 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
               )
             : {};
 
+        const selectedModelInfo = extractPropertiesFromMessage(
+          processedMessages.filter((x) => x.role === 'user').slice(-1)[0],
+        );
+
+        const selectedProvider = LLMManager.getInstance().getProvider(selectedModelInfo.provider);
+
         const agentLoop = createAgentLoopTools(
           processedMessages,
           agentLoopEnabled,
           starterBuild.status !== 'inactive',
           [...Object.keys(mcpTools), ...Object.keys(projectTools), ...Object.keys(pluginTools)],
+          selectedProvider?.supportsToolChoice?.(selectedModelInfo.model) ?? true,
         );
 
         const agentTools = agentProgress.status !== 'inactive' ? agentLoop.tools : {};

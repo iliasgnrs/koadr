@@ -1,4 +1,13 @@
-import { isStepCount, jsonSchema, streamText, tool, toUIMessageStream, type ToolSet, type TextStreamPart } from 'ai';
+import {
+  isStepCount,
+  jsonSchema,
+  streamText,
+  tool,
+  toUIMessageStream,
+  type ToolSet,
+  type LanguageModel,
+  type TextStreamPart,
+} from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAgentStreamRecovery, withAgentStreamDeadlines, withAgentToolCallRecovery } from './agent-stream';
@@ -458,5 +467,113 @@ describe('agent provider recovery', () => {
     expect(onRetry).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledTimes(1);
     expect(chunks.some((chunk) => chunk.type === 'error')).toBe(false);
+  });
+});
+
+describe('automatic tool choice recovery', () => {
+  /*
+   * Thinking-mode models cannot be forced to call a tool, so the loop sends
+   * `auto`. Recovery must still convert printed tool JSON into real calls there.
+   */
+  it('recovers printed tool JSON under auto without flagging plain text', async () => {
+    const execute = vi.fn(async () => ({ content: 'ok' }));
+
+    const reply = (text: string) =>
+      new MockLanguageModelV4({
+        doStream: async () => ({
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({ type: 'stream-start', warnings: [] });
+              controller.enqueue({ type: 'text-start', id: 'text' });
+              controller.enqueue({ type: 'text-delta', id: 'text', delta: text });
+              controller.enqueue({ type: 'text-end', id: 'text' });
+              finish(controller);
+            },
+          }),
+        }),
+      });
+
+    const tools = {
+      project_read_file: tool({
+        inputSchema: jsonSchema({
+          type: 'object',
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+          additionalProperties: false,
+        }),
+        execute,
+      }),
+    };
+
+    const recovered = await streamText({
+      model: withAgentToolCallRecovery(
+        withAgentStreamDeadlines(reply('[{"name":"project_read_file","parameters":{"path":"src/a.css"}}]')),
+        vi.fn(),
+      ),
+      prompt: 'Read the stylesheet.',
+      toolChoice: 'auto',
+      tools,
+      stopWhen: isStepCount(2),
+    });
+
+    // The SDK never executes unvalidated tool calls here, so assert on the emitted UI chunks.
+    expect(await collect(recovered)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: 'tool-input-available', toolName: 'project_read_file' }),
+      ]),
+    );
+
+    const plain = await streamText({
+      model: withAgentToolCallRecovery(withAgentStreamDeadlines(reply('The file uses flexbox.')), vi.fn()),
+      prompt: 'What does the stylesheet do?',
+      toolChoice: 'auto',
+      tools,
+      stopWhen: isStepCount(2),
+    });
+
+    const plainChunks = await collect(plain);
+
+    expect(plainChunks).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text-delta' })]));
+    expect(plainChunks.some((chunk) => chunk.type === 'tool-input-available')).toBe(false);
+  });
+});
+
+describe('wrapped model identity', () => {
+  /*
+   * Regression: the wrappers used to spread the model into a new object, which
+   * silently dropped the non-enumerable `provider`. The SDK splits it before
+   * every request, so every provider failed with "Cannot read properties of
+   * undefined (reading 'split')" instead of reaching the network.
+   */
+  it.each([
+    ['withAgentStreamDeadlines', withAgentStreamDeadlines],
+    ['withAgentToolCallRecovery', (model: LanguageModel) => withAgentToolCallRecovery(model, vi.fn())],
+  ])('%s preserves provider, modelId and supportedUrls', (_name, wrap) => {
+    const model = new MockLanguageModelV4({
+      provider: 'deepseek.chat',
+      modelId: 'deepseek-v4-flash',
+      doStream: async () => ({ stream: new ReadableStream() }),
+    });
+
+    const wrapped = wrap(model) as Exclude<LanguageModel, string>;
+
+    expect(wrapped.provider).toBe('deepseek.chat');
+    expect(wrapped.modelId).toBe('deepseek-v4-flash');
+    expect(typeof wrapped.provider.split('.')[0]).toBe('string');
+    expect(wrapped.supportedUrls).toBeDefined();
+  });
+
+  it('keeps provider identity through both wrappers', () => {
+    const model = new MockLanguageModelV4({
+      provider: 'deepseek.chat',
+      modelId: 'deepseek-v4-flash',
+      doStream: async () => ({ stream: new ReadableStream() }),
+    });
+    const wrapped = withAgentToolCallRecovery(withAgentStreamDeadlines(model), vi.fn()) as Exclude<
+      LanguageModel,
+      string
+    >;
+
+    expect(wrapped.provider).toBe('deepseek.chat');
   });
 });

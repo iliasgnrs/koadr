@@ -12,6 +12,22 @@ export default class DeepseekProvider extends BaseProvider {
     apiTokenKey: 'DEEPSEEK_API_KEY',
   };
 
+  /**
+   * V4-generation ids (and the `deepseek-flash`/`deepseek-pro` aliases) run in
+   * thinking mode by default, where the API answers 400 for a forced tool_choice.
+   * Legacy v3 ids accept it.
+   */
+  supportsToolChoice = (model: string) =>
+    !(model.includes('deepseek-v4') || model.startsWith('deepseek-flash') || model.startsWith('deepseek-pro'));
+
+  /*
+   * V4 reports a 384k output ceiling, but that is a maximum, not a sensible
+   * per-response default: a long plain reasoning answer then has to be re-parsed
+   * chunk by chunk (jsonrepair) inside the Workers CPU budget. Keep the effective
+   * default at 32k.
+   */
+  getCompletionTokenLimitHint = () => 32_000;
+
   staticModels: ModelInfo[] = [
     {
       name: 'deepseek-v4-pro',

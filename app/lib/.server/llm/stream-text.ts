@@ -208,8 +208,15 @@ export async function streamText(props: {
 
   const dynamicMaxTokens = modelDetails ? getCompletionTokenLimit(modelDetails) : Math.min(MAX_TOKENS, 16384);
 
-  // Use model-specific limits directly - no artificial cap needed
-  const safeMaxTokens = dynamicMaxTokens;
+  /*
+   * The output ceiling is a maximum, not a sensible default. Asking for hundreds
+   * of thousands of tokens makes long answers expensive to stream and parse, and
+   * on Workers the CPU budget for the whole request is only a few milliseconds,
+   * so it trips "Worker exceeded CPU time limit". Providers may declare a lower
+   * practical default via `getCompletionTokenLimitHint`.
+   */
+  const providerTokenHint = provider.getCompletionTokenLimitHint?.();
+  const safeMaxTokens = providerTokenHint ? Math.min(dynamicMaxTokens, providerTokenHint) : dynamicMaxTokens;
 
   logger.info(
     `Token limits for model ${modelDetails.name}: maxTokens=${safeMaxTokens}, maxTokenAllowed=${modelDetails.maxTokenAllowed}, maxCompletionTokens=${modelDetails.maxCompletionTokens}`,
@@ -342,21 +349,18 @@ export async function streamText(props: {
         )
       : options || {};
 
-  // DEBUG: Log filtered options
-  logger.info(
-    `DEBUG STREAM: Options filtering for model "${modelDetails.name}":`,
-    JSON.stringify(
-      {
-        isReasoning,
-        originalOptions: options || {},
-        filteredOptions,
-        originalOptionsKeys: options ? Object.keys(options) : [],
-        filteredOptionsKeys: Object.keys(filteredOptions),
-        removedParams: options ? Object.keys(options).filter((key) => !(key in filteredOptions)) : [],
-      },
-      null,
-      2,
-    ),
+  /*
+   * Never serialize the options themselves: `tools` carries the full JSON schemas
+   * and stringifying them on every request burns a large slice of the Workers CPU
+   * budget (which is enforced on the whole request, including the model call).
+   */
+  logger.debug(
+    `Options filtering for model "${modelDetails.name}":`,
+    JSON.stringify({
+      isReasoning,
+      filteredOptionsKeys: Object.keys(filteredOptions),
+      removedParams: options ? Object.keys(options).filter((key) => !(key in filteredOptions)) : [],
+    }),
   );
 
   /*
@@ -410,21 +414,13 @@ export async function streamText(props: {
     ...(isReasoning ? { temperature: 1 } : {}),
   };
 
-  // DEBUG: Log final streaming parameters
-  logger.info(
-    `DEBUG STREAM: Final streaming params for model "${modelDetails.name}":`,
-    JSON.stringify(
-      {
-        hasTemperature: 'temperature' in streamParams,
-        hasMaxOutputTokens: 'maxOutputTokens' in streamParams,
-        paramKeys: Object.keys(streamParams).filter((key) => !['model', 'messages', 'system'].includes(key)),
-        streamParams: Object.fromEntries(
-          Object.entries(streamParams).filter(([key]) => !['model', 'messages', 'system'].includes(key)),
-        ),
-      },
-      null,
-      2,
-    ),
+  logger.debug(
+    `Streaming params for model "${modelDetails.name}"`,
+    JSON.stringify({
+      hasTemperature: 'temperature' in streamParams,
+      hasMaxOutputTokens: 'maxOutputTokens' in streamParams,
+      toolCount: Object.keys(streamParams.tools ?? {}).length,
+    }),
   );
 
   return await _streamText(streamParams);

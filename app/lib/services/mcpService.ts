@@ -416,6 +416,16 @@ export class MCPService {
       return messages;
     }
 
+    /*
+     * Without MCP servers every tool part below falls through to
+     * `TOOL_NO_EXECUTE_FUNCTION`, but building `convertToModelMessages` and
+     * rewriting each part still burns Workers CPU on requests that only use
+     * project tools. Bail out before doing any of that work.
+     */
+    if (Object.keys(this._tools).length === 0) {
+      return messages;
+    }
+
     const processedParts = await Promise.all(
       parts.map(async (part) => {
         // Only process tool parts

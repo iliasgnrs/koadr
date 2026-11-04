@@ -77,6 +77,20 @@ describe('MCPService.processToolInvocations', () => {
     await expect(service.processToolInvocations(messages, createWriter())).resolves.toBe(messages);
   });
 
+  it('skips tool rewriting entirely when no MCP tools are registered', async () => {
+    /*
+     * Workers CPU regression: an approved-looking tool part used to build
+     * model messages on every build request even with zero MCP servers.
+     */
+    const service = serviceWithTools({});
+    const writer = createWriter();
+    const part = toolInvocationPart('ghost', 'result', TOOL_EXECUTION_APPROVAL.APPROVE);
+    const messages = messageWithParts([part]);
+
+    await expect(service.processToolInvocations(messages, writer)).resolves.toBe(messages);
+    expect(writer.write).not.toHaveBeenCalled();
+  });
+
   it('leaves non-tool parts alone', async () => {
     const service = serviceWithTools({});
     const writer = createWriter();

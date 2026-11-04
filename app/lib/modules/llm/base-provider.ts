@@ -19,6 +19,8 @@ export abstract class BaseProvider implements ProviderInfo {
   getApiKeyLink?: string;
   labelForGetApiKey?: string;
   icon?: string;
+  supportsToolChoice?: (model: string) => boolean;
+  getCompletionTokenLimitHint?: () => number;
 
   /**
    * Convert Cloudflare Env bindings to a plain Record<string, string>.

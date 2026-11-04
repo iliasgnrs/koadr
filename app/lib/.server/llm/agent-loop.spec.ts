@@ -151,6 +151,30 @@ describe('agent plan and completion tools', () => {
     ).toEqual({ toolChoice: 'required' });
   });
 
+  /*
+   * Thinking-mode models (DeepSeek V4) answer 400 for a forced tool_choice, so the
+   * loop must fall back to `auto` while still narrowing the active tool set.
+   */
+  it('falls back to auto when the model rejects a forced tool choice', () => {
+    const loop = createAgentLoopTools([user], true, true, ['project_read_file'], false);
+
+    expect(loop.prepareStep({ steps: [] })).toEqual({
+      toolChoice: 'auto',
+      activeTools: ['agent_plan'],
+    });
+
+    expect(
+      loop.prepareStep({
+        steps: [
+          {
+            toolCalls: [{ toolName: 'agent_plan', toolCallId: 'plan', input: plan }],
+            toolResults: [{ toolCallId: 'plan', output: { plan } }],
+          },
+        ],
+      }),
+    ).toMatchObject({ toolChoice: 'auto' });
+  });
+
   it('allows a final answer after successful completion within the real SDK loop', async () => {
     let call = 0;
 

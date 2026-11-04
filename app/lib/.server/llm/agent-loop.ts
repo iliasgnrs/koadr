@@ -24,8 +24,15 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
   enabled: boolean,
   requiresPreview: boolean,
   taskToolNames?: TaskToolName[],
+  supportsToolChoice = true,
 ) {
   let currentMessages = messages;
+
+  /*
+   * Thinking-mode models reject a forced tool_choice, so they get `auto` with the
+   * tool set narrowed instead of `tool`/`required`.
+   */
+  const forced = <T, F>(choice: T, fallback: F): T | F => (supportsToolChoice ? choice : fallback);
 
   const tools = {
     agent_plan: tool({
@@ -171,7 +178,7 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
       if (!progress.plan) {
         return {
           ...instructions,
-          toolChoice: { type: 'tool' as const, toolName: 'agent_plan' as const },
+          toolChoice: forced({ type: 'tool' as const, toolName: 'agent_plan' as const }, 'auto' as const),
           activeTools: ['agent_plan' as const],
         };
       }
@@ -194,7 +201,7 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
 
       return {
         ...instructions,
-        toolChoice: 'required' as const,
+        toolChoice: forced('required' as const, 'auto' as const),
         ...(taskToolNames
           ? {
               activeTools: [...activeProjectTools!, 'agent_plan' as const, 'agent_complete' as const],

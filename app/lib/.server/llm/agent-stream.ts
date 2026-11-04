@@ -10,6 +10,27 @@ const DEFAULT_ATTEMPT_LIMITS = { firstMs: 120_000, idleMs: 120_000, attemptMs: 3
 const MAX_RECOVERY_ATTEMPTS = 2;
 const MAX_RECOVERED_CALLS = 8;
 
+type StreamModel = Exclude<LanguageModel, string>;
+
+/**
+ * Rebuilds a model around a wrapped `doStream`.
+ *
+ * A bare `{ ...model, doStream }` loses `provider` and `supportedUrls`: both are
+ * non-enumerable on provider models, and the SDK calls `model.provider.split('.')`
+ * before every request, so a spread copy fails with "Cannot read properties of
+ * undefined (reading 'split')" for every provider.
+ */
+function withStreamOverride(model: StreamModel, doStream: StreamModel['doStream']): StreamModel {
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    supportedUrls: model.supportedUrls,
+    doGenerate: model.doGenerate.bind(model),
+    doStream,
+  } as StreamModel;
+}
+
 /** Recover complete JSON calls to available tools or retry once. Effects still use normal validation and approvals. */
 export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => void) {
   if (typeof model === 'string') {
@@ -18,163 +39,175 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
 
   const normalized = wrapLanguageModel({ model, middleware: [] });
 
-  return {
-    ...normalized,
-    doStream: async (params: Parameters<typeof normalized.doStream>[0]) => {
-      const choice = params.toolChoice;
+  return withStreamOverride(normalized, async (params: Parameters<typeof normalized.doStream>[0]) => {
+    const choice = params.toolChoice;
 
-      if (!choice || (choice.type !== 'required' && choice.type !== 'tool')) {
-        return normalized.doStream(params);
-      }
+    /*
+     * `auto` on a thinking-mode model is the same intent as `required`, since the
+     * provider refuses a forced tool_choice there. Keep the retry path so a text
+     * reply (or a call to a tool filtered out of this step) is still corrected.
+     */
+    if (!choice || (choice.type !== 'required' && choice.type !== 'tool' && choice.type !== 'auto')) {
+      return normalized.doStream(params);
+    }
 
-      const cancellation = new AbortController();
+    const cancellation = new AbortController();
 
-      const abortSignal = params.abortSignal
-        ? AbortSignal.any([params.abortSignal, cancellation.signal])
-        : cancellation.signal;
+    const abortSignal = params.abortSignal
+      ? AbortSignal.any([params.abortSignal, cancellation.signal])
+      : cancellation.signal;
 
-      const initial = await normalized.doStream({ ...params, abortSignal });
-      type Part = Awaited<ReturnType<typeof normalized.doStream>>['stream'] extends ReadableStream<infer T> ? T : never;
+    const initial = await normalized.doStream({ ...params, abortSignal });
+    type Part = Awaited<ReturnType<typeof normalized.doStream>>['stream'] extends ReadableStream<infer T> ? T : never;
 
-      let reader: ReadableStreamDefaultReader<Part> | undefined;
-      let cancelled = false;
+    let reader: ReadableStreamDefaultReader<Part> | undefined;
+    let cancelled = false;
 
-      return {
-        ...initial,
-        stream: new ReadableStream<Part>({
-          async start(controller) {
-            try {
-              for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS && !cancelled; attempt++) {
-                const correction =
-                  'Your previous response did not call a required tool. Use the supplied native tools interface now. Do not print JSON or function calls as text. Follow the tool schema exactly.';
-                const retryPrompt =
-                  params.prompt[0]?.role === 'system'
-                    ? [
-                        { ...params.prompt[0], content: `${params.prompt[0].content}\n\n${correction}` },
-                        ...params.prompt.slice(1),
-                      ]
-                    : [{ role: 'system' as const, content: correction }, ...params.prompt];
+    return {
+      ...initial,
+      stream: new ReadableStream<Part>({
+        async start(controller) {
+          try {
+            for (let attempt = 0; attempt < MAX_RECOVERY_ATTEMPTS && !cancelled; attempt++) {
+              const correction =
+                'Your previous response did not call a required tool. Use the supplied native tools interface now. Do not print JSON or function calls as text. Follow the tool schema exactly.';
+              const retryPrompt =
+                params.prompt[0]?.role === 'system'
+                  ? [
+                      { ...params.prompt[0], content: `${params.prompt[0].content}\n\n${correction}` },
+                      ...params.prompt.slice(1),
+                    ]
+                  : [{ role: 'system' as const, content: correction }, ...params.prompt];
 
-                const result =
-                  attempt === 0 ? initial : await normalized.doStream({ ...params, prompt: retryPrompt, abortSignal });
+              const result =
+                attempt === 0 ? initial : await normalized.doStream({ ...params, prompt: retryPrompt, abortSignal });
 
-                if (cancelled) {
-                  await result.stream.cancel();
-                  return;
-                }
-
-                reader = result.stream.getReader();
-
-                const buffered: Part[] = [];
-
-                let satisfied = false;
-                let failed = false;
-                let finished = false;
-
-                while (!cancelled) {
-                  const { done, value } = await reader.read();
-
-                  if (done) {
-                    break;
-                  }
-
-                  if (
-                    value.type === 'tool-call' &&
-                    (choice.type === 'required' || value.toolName === choice.toolName)
-                  ) {
-                    satisfied = true;
-                  }
-
-                  if (satisfied) {
-                    for (const part of buffered.splice(0)) {
-                      controller.enqueue(part);
-                    }
-                    controller.enqueue(value);
-                  } else {
-                    buffered.push(value);
-                  }
-
-                  failed ||= value.type === 'error';
-
-                  if (value.type === 'finish') {
-                    finished = true;
-                    void reader.cancel().catch(() => undefined);
-                    break;
-                  }
-                }
-
-                reader.releaseLock();
-                reader = undefined;
-
-                if (cancelled) {
-                  return;
-                }
-
-                if (finished && !satisfied && !failed) {
-                  const text = buffered
-                    .filter((part) => part.type === 'text-delta')
-                    .map((part) => part.delta)
-                    .join('');
-
-                  const calls = recoverJsonToolCalls(text, params.tools, choice);
-                  const finish = buffered.find((part) => part.type === 'finish');
-
-                  if (calls.length && finish?.type === 'finish') {
-                    for (const part of buffered.filter(
-                      (part) => !part.type.startsWith('text-') && part.type !== 'finish',
-                    )) {
-                      controller.enqueue(part);
-                    }
-
-                    for (const call of calls) {
-                      controller.enqueue({
-                        type: 'tool-call',
-                        toolCallId: generateId(),
-                        toolName: call.name,
-                        input: JSON.stringify(call.input),
-                        providerMetadata: { bolt: { recoveredFromText: true } },
-                      });
-                    }
-                    controller.enqueue({
-                      ...finish,
-                      finishReason: { unified: 'tool-calls', raw: 'recovered-tool-calls' },
-                    });
-                    controller.close();
-
-                    return;
-                  }
-                }
-
-                if (attempt === 0 && finished && !satisfied && !failed) {
-                  onRetry();
-                  continue;
-                }
-
-                for (const part of buffered) {
-                  controller.enqueue(part);
-                }
-                controller.close();
-
+              if (cancelled) {
+                await result.stream.cancel();
                 return;
               }
-            } catch (error) {
-              void reader?.cancel(error).catch(() => undefined);
 
-              if (!cancelled) {
-                controller.enqueue({ type: 'error', error });
-                controller.close();
+              reader = result.stream.getReader();
+
+              const buffered: Part[] = [];
+
+              let satisfied = false;
+              let failed = false;
+              let finished = false;
+
+              while (!cancelled) {
+                const { done, value } = await reader.read();
+
+                if (done) {
+                  break;
+                }
+
+                if (
+                  value.type === 'tool-call' &&
+                  (choice.type === 'auto' || choice.type === 'required' || value.toolName === choice.toolName)
+                ) {
+                  satisfied = true;
+                }
+
+                if (satisfied) {
+                  for (const part of buffered.splice(0)) {
+                    controller.enqueue(part);
+                  }
+                  controller.enqueue(value);
+                } else {
+                  buffered.push(value);
+                }
+
+                failed ||= value.type === 'error';
+
+                if (value.type === 'finish') {
+                  finished = true;
+                  void reader.cancel().catch(() => undefined);
+                  break;
+                }
               }
+
+              reader.releaseLock();
+              reader = undefined;
+
+              if (cancelled) {
+                return;
+              }
+
+              if (finished && !satisfied && !failed) {
+                const text = buffered
+                  .filter((part) => part.type === 'text-delta')
+                  .map((part) => part.delta)
+                  .join('');
+
+                /*
+                 * Under `auto` the model may answer in text, which is legitimate; only
+                 * JSON that names a real tool is treated as a failed call.
+                 */
+                const calls = recoverJsonToolCalls(
+                  text,
+                  params.tools,
+                  choice.type === 'auto' ? undefined : choice,
+                  choice.type === 'auto',
+                );
+
+                const finish = buffered.find((part) => part.type === 'finish');
+
+                if (calls.length && finish?.type === 'finish') {
+                  for (const part of buffered.filter(
+                    (part) => !part.type.startsWith('text-') && part.type !== 'finish',
+                  )) {
+                    controller.enqueue(part);
+                  }
+
+                  for (const call of calls) {
+                    controller.enqueue({
+                      type: 'tool-call',
+                      toolCallId: generateId(),
+                      toolName: call.name,
+                      input: JSON.stringify(call.input),
+                      providerMetadata: { bolt: { recoveredFromText: true } },
+                    });
+                  }
+                  controller.enqueue({
+                    ...finish,
+                    finishReason: { unified: 'tool-calls', raw: 'recovered-tool-calls' },
+                  });
+                  controller.close();
+
+                  return;
+                }
+              }
+
+              if (attempt === 0 && finished && !satisfied && !failed) {
+                onRetry();
+                continue;
+              }
+
+              for (const part of buffered) {
+                controller.enqueue(part);
+              }
+              controller.close();
+
+              return;
             }
-          },
-          async cancel(reason) {
-            cancelled = true;
-            cancellation.abort(reason);
-            await reader?.cancel(reason);
-          },
-        }),
-      };
-    },
-  };
+          } catch (error) {
+            void reader?.cancel(error).catch(() => undefined);
+
+            if (!cancelled) {
+              controller.enqueue({ type: 'error', error });
+              controller.close();
+            }
+          }
+        },
+        async cancel(reason) {
+          cancelled = true;
+          cancellation.abort(reason);
+          await reader?.cancel(reason);
+        },
+      }),
+    };
+  });
 }
 
 /**
@@ -192,7 +225,8 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
 function recoverJsonToolCalls(
   text: string,
   tools: Parameters<Exclude<LanguageModel, string>['doStream']>[0]['tools'],
-  choice: { type: 'required' } | { type: 'tool'; toolName: string },
+  choice?: { type: 'required' } | { type: 'tool'; toolName: string },
+  allowAnyAvailable = false,
 ): Array<{ name: string; input: Record<string, unknown> }> {
   try {
     const trimmed = text.trim().replace(/^```(?:json)?\s*\n([\s\S]*)\n```$/, '$1');
@@ -239,7 +273,11 @@ function recoverJsonToolCalls(
       calls.push({ name, input: input as Record<string, unknown> });
     }
 
-    return choice.type === 'required' || calls.some((call) => call.name === choice.toolName) ? calls : [];
+    if (allowAnyAvailable) {
+      return calls;
+    }
+
+    return choice?.type === 'required' || calls.some((call) => call.name === choice?.toolName) ? calls : [];
   } catch {
     return [];
   }
@@ -253,116 +291,113 @@ export function withAgentStreamDeadlines(model: LanguageModel, limits = DEFAULT_
 
   const normalized = wrapLanguageModel({ model, middleware: [] });
 
-  return {
-    ...normalized,
-    doStream: async (params: Parameters<typeof normalized.doStream>[0]) => {
-      const attempt = new AbortController();
-      const signal = params.abortSignal ? AbortSignal.any([params.abortSignal, attempt.signal]) : attempt.signal;
-      const timeout = () => attempt.abort(new DOMException('Agent model response timed out.', 'TimeoutError'));
+  return withStreamOverride(normalized, async (params: Parameters<typeof normalized.doStream>[0]) => {
+    const attempt = new AbortController();
+    const signal = params.abortSignal ? AbortSignal.any([params.abortSignal, attempt.signal]) : attempt.signal;
+    const timeout = () => attempt.abort(new DOMException('Agent model response timed out.', 'TimeoutError'));
 
-      let idleTimer = setTimeout(timeout, limits.firstMs);
+    let idleTimer = setTimeout(timeout, limits.firstMs);
 
-      const attemptTimer = setTimeout(timeout, limits.attemptMs);
+    const attemptTimer = setTimeout(timeout, limits.attemptMs);
 
-      const cleanup = () => {
-        clearTimeout(idleTimer);
-        clearTimeout(attemptTimer);
-      };
+    const cleanup = () => {
+      clearTimeout(idleTimer);
+      clearTimeout(attemptTimer);
+    };
 
-      let abortHandler: () => void = () => undefined;
+    let abortHandler: () => void = () => undefined;
 
-      const aborted = new Promise<never>((_, reject) => {
-        abortHandler = () => reject(signal.reason);
+    const aborted = new Promise<never>((_, reject) => {
+      abortHandler = () => reject(signal.reason);
 
-        if (signal.aborted) {
-          abortHandler();
-        } else {
-          signal.addEventListener('abort', abortHandler, { once: true });
-        }
-      });
-      const release = () => {
-        cleanup();
-        signal.removeEventListener('abort', abortHandler);
-      };
+      if (signal.aborted) {
+        abortHandler();
+      } else {
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+    });
+    const release = () => {
+      cleanup();
+      signal.removeEventListener('abort', abortHandler);
+    };
 
-      try {
-        const result = await Promise.race([normalized.doStream({ ...params, abortSignal: signal }), aborted]);
-        const reader = result.stream.getReader();
+    try {
+      const result = await Promise.race([normalized.doStream({ ...params, abortSignal: signal }), aborted]);
+      const reader = result.stream.getReader();
 
-        let finished = false;
+      let finished = false;
 
-        return {
-          ...result,
-          stream: new ReadableStream<
-            Awaited<ReturnType<typeof normalized.doStream>>['stream'] extends ReadableStream<infer T> ? T : never
-          >({
-            async pull(controller) {
-              if (finished) {
+      return {
+        ...result,
+        stream: new ReadableStream<
+          Awaited<ReturnType<typeof normalized.doStream>>['stream'] extends ReadableStream<infer T> ? T : never
+        >({
+          async pull(controller) {
+            if (finished) {
+              return;
+            }
+
+            try {
+              const { done, value } = await Promise.race([reader.read(), aborted]);
+
+              if (done) {
+                finished = true;
+                release();
+                reader.releaseLock();
+                controller.close();
+
                 return;
               }
 
-              try {
-                const { done, value } = await Promise.race([reader.read(), aborted]);
-
-                if (done) {
-                  finished = true;
-                  release();
-                  reader.releaseLock();
-                  controller.close();
-
-                  return;
-                }
-
-                // A completed attempt must not be replayed because its transport fails afterward.
-                if (value.type === 'finish') {
-                  finished = true;
-                  release();
-                  controller.enqueue(value);
-                  controller.close();
-                  void reader.cancel().catch(() => undefined);
-
-                  return;
-                }
-
-                if (
-                  ['text-delta', 'reasoning-delta', 'tool-input-start', 'tool-input-delta', 'tool-call'].includes(
-                    value.type,
-                  )
-                ) {
-                  clearTimeout(idleTimer);
-                  idleTimer = setTimeout(timeout, limits.idleMs);
-                }
-
-                controller.enqueue(value);
-              } catch (error) {
+              // A completed attempt must not be replayed because its transport fails afterward.
+              if (value.type === 'finish') {
                 finished = true;
                 release();
-                void reader.cancel(error).catch(() => undefined);
-                controller.enqueue({ type: 'error', error });
+                controller.enqueue(value);
                 controller.close();
+                void reader.cancel().catch(() => undefined);
+
+                return;
               }
-            },
-            async cancel(reason) {
+
+              if (
+                ['text-delta', 'reasoning-delta', 'tool-input-start', 'tool-input-delta', 'tool-call'].includes(
+                  value.type,
+                )
+              ) {
+                clearTimeout(idleTimer);
+                idleTimer = setTimeout(timeout, limits.idleMs);
+              }
+
+              controller.enqueue(value);
+            } catch (error) {
               finished = true;
-              attempt.abort(reason);
               release();
-              await reader.cancel(reason);
-            },
-          }),
-        };
-      } catch (error) {
-        release();
-        return {
-          stream: new ReadableStream({
-            start(controller) {
-              controller.enqueue({ type: 'error' as const, error });
+              void reader.cancel(error).catch(() => undefined);
+              controller.enqueue({ type: 'error', error });
               controller.close();
-            },
-          }),
-        };
-      }
-    },
-  };
+            }
+          },
+          async cancel(reason) {
+            finished = true;
+            attempt.abort(reason);
+            release();
+            await reader.cancel(reason);
+          },
+        }),
+      };
+    } catch (error) {
+      release();
+      return {
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'error' as const, error });
+            controller.close();
+          },
+        }),
+      };
+    }
+  });
 }
 
 /** The SDK buffers tool inputs until an attempt succeeds, preserving earlier steps on retry. */
