@@ -151,6 +151,26 @@ describe('agent plan and completion tools', () => {
     ).toEqual({ toolChoice: 'required' });
   });
 
+  it('unlocks project tools after the server-executed plan call', () => {
+    /*
+     * Regression: `agent_plan` executes on the server, so the SDK reports no
+     * toolResult for it. The loop then re-narrowed activeTools to agent_plan on
+     * every step, and later project tool calls failed with
+     * "Model tried to call unavailable tool 'project_write_file'".
+     */
+    const loop = createAgentLoopTools([user], true, true, ['project_write_file', 'project_read_file']);
+
+    const planStep = {
+      toolCalls: [{ toolName: 'agent_plan', toolCallId: 'plan', input: plan }],
+      toolResults: [],
+    };
+
+    expect(loop.prepareStep({ steps: [planStep] })).toMatchObject({
+      toolChoice: 'required',
+      activeTools: expect.arrayContaining(['project_write_file', 'project_read_file']),
+    });
+  });
+
   /*
    * Thinking-mode models (DeepSeek V4) answer 400 for a forced tool_choice, so the
    * loop must fall back to `auto` while still narrowing the active tool set.

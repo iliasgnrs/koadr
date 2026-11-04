@@ -1,6 +1,11 @@
 import { tool, type Instructions } from 'ai';
 import { z } from 'zod';
-import { getAgentCompletionProblems, getAgentLoopInstructions, getAgentLoopProgress } from '~/lib/common/agentLoop';
+import {
+  getAgentCompletionProblems,
+  getAgentLoopInstructions,
+  getAgentLoopProgress,
+  isAgentPlan,
+} from '~/lib/common/agentLoop';
 import type { AnyMessage } from '~/lib/persistence/messageMigration';
 
 const planSchema = z
@@ -123,6 +128,18 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
       toolChoice: 'none' | 'auto' | 'required' | { type: 'tool'; toolName: 'agent_plan' };
       activeTools?: Array<TaskToolName | 'agent_plan' | 'agent_complete'>;
     } => {
+      /*
+       * `agent_plan` runs on the server, so the SDK's `toolResults` omit it. Without
+       * its output the loop never sees a plan and re-narrows `activeTools` to
+       * `agent_plan` on every later step, leaving the model unable to call any
+       * project tool ("Model tried to call unavailable tool 'project_write_file'").
+       * Reconstruct the plan output from the validated call input in that case.
+       */
+      const planResult = (call: { toolName: string; input: unknown }) =>
+        call.toolName === 'agent_plan' && isAgentPlan(call.input)
+          ? { plan: { ...call.input, requiresPreview: requiresPreview || call.input.requiresPreview } }
+          : undefined;
+
       currentMessages = [
         ...messages,
         ...steps.map((step) => ({
@@ -131,12 +148,14 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
             { type: 'step-start' },
             ...step.toolCalls.map((call) => {
               const result = step.toolResults.find((result) => result.toolCallId === call.toolCallId);
+              const output = result ? result.output : planResult(call);
+
               return {
                 type: `tool-${call.toolName}`,
                 toolCallId: call.toolCallId,
                 input: call.input,
-                state: result ? 'output-available' : call.invalid ? 'output-error' : 'input-available',
-                output: result?.output,
+                state: output !== undefined ? 'output-available' : call.invalid ? 'output-error' : 'input-available',
+                output,
               };
             }),
           ],
