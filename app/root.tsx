@@ -20,8 +20,17 @@ const toastAnimation = cssTransition({
 export const links: LinksFunction = () => [
   {
     rel: 'icon',
-    href: '/favicon.svg',
-    type: 'image/svg+xml',
+    href: '/favicon.ico',
+    sizes: 'any',
+  },
+  {
+    rel: 'icon',
+    href: '/favicon.png',
+    type: 'image/png',
+  },
+  {
+    rel: 'apple-touch-icon',
+    href: '/apple-touch-icon.png',
   },
   { rel: 'stylesheet', href: reactToastifyStyles },
   { rel: 'stylesheet', href: tailwindReset },
@@ -38,7 +47,7 @@ export const links: LinksFunction = () => [
   },
   {
     rel: 'stylesheet',
-    href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+    href: 'https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap',
   },
   {
     rel: 'preconnect',

@@ -35,17 +35,17 @@ const BASE_COLORS = {
     950: '#0A0A0A',
   },
   accent: {
-    50: '#F8F5FF',
-    100: '#F0EBFF',
-    200: '#E1D6FF',
-    300: '#CEBEFF',
-    400: '#B69EFF',
-    500: '#9C7DFF',
-    600: '#8A5FFF',
-    700: '#7645E8',
-    800: '#6234BB',
-    900: '#502D93',
-    950: '#2D1959',
+    50: '#FFF7ED',
+    100: '#FFEDD5',
+    200: '#FFD9A8',
+    300: '#FD962F',
+    400: '#FC8A1A',
+    500: '#FF6600',
+    600: '#E65C00',
+    700: '#BF4C00',
+    800: '#993D00',
+    900: '#7A3100',
+    950: '#421A00',
   },
   green: {
     50: '#F0FDF4',
@@ -89,11 +89,14 @@ const BASE_COLORS = {
 
 const COLOR_PRIMITIVES = {
   ...BASE_COLORS,
+  /* Legacy `purple-*` utilities resolve to the brand accent ramp (Koadr palette). */
+  purple: BASE_COLORS.accent,
   alpha: {
     white: generateAlphaPalette(BASE_COLORS.white),
     gray: generateAlphaPalette(BASE_COLORS.gray[900]),
     red: generateAlphaPalette(BASE_COLORS.red[500]),
     accent: generateAlphaPalette(BASE_COLORS.accent[500]),
+    purple: generateAlphaPalette(BASE_COLORS.accent[500]),
   },
 };
 
@@ -113,6 +116,10 @@ export default defineConfig({
     ['b', {}],
   ],
   theme: {
+    fontFamily: {
+      sans: "'Google Sans', ui-sans-serif, system-ui, sans-serif",
+      mono: "'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace",
+    },
     colors: {
       ...COLOR_PRIMITIVES,
       bolt: {
