@@ -1,6 +1,6 @@
 # Koadr
 
-[![Koadr — Prompt it. Build it. Ship it.](./public/social_preview_index.jpg)](https://koadr.iliasgnrs.workers.dev)
+[![Koadr — Prompt it. Build it. Ship it.](./public/social_preview_index.jpg)](https://koadr.dev)
 
 **Koadr** is an open-architecture, agentic AI workspace that turns natural language into
 production-ready full-stack applications instantly inside your browser. No local setup,
@@ -9,7 +9,7 @@ no limits — just prompt it, build it, ship it.
 Koadr is model-agnostic: bring your own keys (DeepSeek, Claude, OpenAI, Gemini, Groq,
 Ollama, LM Studio and more) and run Node.js in the browser through WebContainers.
 
-- **Live app**: [koadr.iliasgnrs.workers.dev](https://koadr.iliasgnrs.workers.dev)
+- **Live app**: [koadr.dev](https://koadr.dev)
 - **FAQ**: [FAQ.md](FAQ.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Agent streaming notes**: [docs/koadr/agent-streaming-fixes.md](docs/koadr/agent-streaming-fixes.md)

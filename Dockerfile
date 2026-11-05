@@ -17,14 +17,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 ARG VITE_PUBLIC_APP_URL
 ENV VITE_PUBLIC_APP_URL=${VITE_PUBLIC_APP_URL}
 
-# Install deps efficiently
-COPY package.json pnpm-lock.yaml* ./
-RUN pnpm fetch
-
-# Copy source and build
+# Copy source and install (dev deps are needed to build).
+#
+# `pnpm fetch` + `pnpm install` as separate layers used to leave a ~1.4 GB
+# pnpm-store layer in the image that nothing at runtime reads. Installing in
+# one layer and pruning the store straight after keeps that out, at the cost
+# of a weaker dependency cache — the image is ~1.4 GB smaller.
 COPY . .
-# install with dev deps (needed to build)
-RUN pnpm install --offline --frozen-lockfile
+RUN pnpm install --frozen-lockfile && pnpm store prune
 
 # Build for the Node/VPS target: client bundle + React Router server build + the
 # compiled Node entry (build/server-node). Not `pnpm build` — that emits a
@@ -66,13 +66,14 @@ ENV WRANGLER_SEND_METRICS=false \
 RUN apt-get update && apt-get install -y --no-install-recommends curl \
   && rm -rf /var/lib/apt/lists/*
 
-# Copy built files
-COPY --from=prod-deps /app/build /app/build
-COPY --from=prod-deps /app/node_modules /app/node_modules
-COPY --from=prod-deps /app/package.json /app/package.json
+# Copy built files with the right owner up front. `chown -R` afterwards would
+# copy every layer again — it turned a ~1 GB layer into 2 GB on the VPS.
+COPY --from=prod-deps --chown=koadr:koadr /app/build /app/build
+COPY --from=prod-deps --chown=koadr:koadr /app/node_modules /app/node_modules
+COPY --from=prod-deps --chown=koadr:koadr /app/package.json /app/package.json
 
 # Run as an unprivileged user; the app writes nothing into /app at runtime.
-RUN useradd --system --uid 1001 --create-home koadr && chown -R koadr:koadr /app
+RUN useradd --system --uid 1001 --create-home koadr
 USER koadr
 
 EXPOSE 3000
