@@ -12,6 +12,17 @@ import { browserPolyfills } from './scripts/vite/browser-polyfills.ts';
  */
 process.env.CLOUDFLARE_CF_FETCH_ENABLED ??= 'false';
 
+/*
+ * Deployment target.
+ *
+ * `workers` (default) builds for Cloudflare Workers and is what `wrangler deploy`
+ * consumes. `node` builds the same app for the VPS: the `@cloudflare/vite-plugin`
+ * is dropped (it emits a workerd bundle) and server/app.ts runs the output under
+ * plain Node. Keeping both in one config means the two deploys share one codebase.
+ */
+const DEPLOY_TARGET = process.env.DEPLOY_TARGET === 'node' ? 'node' : 'workers';
+const isNodeTarget = DEPLOY_TARGET === 'node';
+
 // Load environment variables without duplicate loading or console noise
 dotenv.config({ path: ['.env.local', '.env'], quiet: true });
 
@@ -171,7 +182,7 @@ export default defineConfig((config) => {
        * package is CommonJS and exposes no named `Buffer` export.
        */
       browserPolyfills(),
-      config.mode !== 'test' && cloudflare({ viteEnvironment: { name: 'ssr' } }),
+      config.mode !== 'test' && !isNodeTarget && cloudflare({ viteEnvironment: { name: 'ssr' } }),
       config.mode !== 'test' && reactRouter(),
       UnoCSS(),
       chrome129IssuePlugin(),

@@ -26,8 +26,10 @@ COPY . .
 # install with dev deps (needed to build)
 RUN pnpm install --offline --frozen-lockfile
 
-# Build the Remix app (SSR + client)
-RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm run build
+# Build for the Node/VPS target: client bundle + React Router server build + the
+# compiled Node entry (build/server-node). Not `pnpm build` — that emits a
+# workerd bundle consumed by `wrangler deploy`.
+RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm run build:node
 
 # ---- production dependencies stage ----
 FROM build AS prod-deps
@@ -41,8 +43,11 @@ FROM prod-deps AS koadr-production
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV PORT=5173
+ENV PORT=3000
 ENV HOST=0.0.0.0
+# Caddy reaches this container over the shared `proxy` network by name.
+ENV CLIENT_DIR=/app/build/client
+ENV SERVER_BUILD=/app/build/server/index.js
 
 # Non-sensitive build arguments
 ARG VITE_LOG_LEVEL=debug
@@ -65,20 +70,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 COPY --from=prod-deps /app/build /app/build
 COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=prod-deps /app/package.json /app/package.json
-COPY --from=prod-deps /app/wrangler.jsonc /app/wrangler.jsonc
 
-# Pre-configure wrangler to disable metrics
-RUN mkdir -p /root/.config/.wrangler && \
-    echo '{"enabled":false}' > /root/.config/.wrangler/metrics.json
+# Run as an unprivileged user; the app writes nothing into /app at runtime.
+RUN useradd --system --uid 1001 --create-home koadr && chown -R koadr:koadr /app
+USER koadr
 
-EXPOSE 5173
+EXPOSE 3000
 
 # Healthcheck for deployment platforms
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-  CMD curl -fsS http://localhost:5173/ || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+  CMD curl -fsS http://localhost:3000/ || exit 1
 
-# Start using dockerstart script with Wrangler
-CMD ["pnpm", "run", "dockerstart"]
+CMD ["node", "build/server-node/server/app.js"]
 
 
 # ---- development stage ----

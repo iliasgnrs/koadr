@@ -1,0 +1,24 @@
+# Caddy vhost for koadr.dev. Lives at /opt/proxy/conf.d/koadr.caddy on the VPS
+# and is picked up by the shared edge via `import /etc/caddy/conf.d/*`.
+#
+# Reload after installing:
+#   docker exec proxy-caddy caddy reload --config /etc/caddy/Caddyfile
+
+koadr.dev, www.koadr.dev {
+	# Cloudflare Origin Certificate (SSL/TLS -> Origin Server -> Create
+	# Certificate). Set the zone to Full (Strict).
+	tls /etc/caddy/certs/koadr.crt /etc/caddy/certs/koadr.key
+
+	# zstd + gzip. Brotli is negotiated by Cloudflare at the edge.
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/koadr.log
+	}
+
+	reverse_proxy koadr-web:3000 {
+		# Overwrite rather than append: the app only trusts this header because
+		# Caddy sets it. See BUG_REPORT_TRUSTED_IP_HEADER in docker-compose.yml.
+		header_up X-Real-IP {remote_host}
+	}
+}

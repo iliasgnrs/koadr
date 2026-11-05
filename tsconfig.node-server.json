@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./build/server-node",
+    "rootDir": ".",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "declaration": false,
+    "allowImportingTsExtensions": true,
+    "sourceMap": true,
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "rewriteRelativeImportExtensions": true,
+    "noEmitOnError": false
+  },
+  "include": [
+    "server/**/*.ts",
+    "app/lib/cloudflare-context.ts",
+    "worker-configuration.d.ts"
+  ]
+}

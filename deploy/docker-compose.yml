@@ -1,0 +1,50 @@
+# Koadr on the VPS — lives at /opt/koadr on 91.98.89.225.
+#
+# Deploy:
+#   docker build -t koadr-web:latest .        # or pull from GHCR
+#   docker compose -f deploy/docker-compose.yml -p koadr up -d
+#
+# Modelled on /opt/adapedu: the app publishes no host port, joins the shared
+# `proxy` network so the edge Caddy can reach it by container name, and keeps
+# Caddy next to the app so a vhost mistake cannot take down other projects.
+
+name: koadr
+
+services:
+  web:
+    image: ${KOADR_IMAGE:-koadr-web:latest}
+    container_name: koadr-web
+    restart: unless-stopped
+
+    env_file: .env
+
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOST: 0.0.0.0
+      CLIENT_DIR: /app/build/client
+      SERVER_BUILD: /app/build/server/index.js
+      # Caddy is the only client and it overwrites X-Real-IP, so the header is
+      # trustworthy here — this is what rate limiting and bug reports key on.
+      BUG_REPORT_TRUSTED_IP_HEADER: x-real-ip
+
+    # No `ports:` on purpose — only the reverse proxy may reach this container.
+    networks:
+      - internal
+      - proxy
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    mem_limit: 2g
+    cpus: 2
+
+networks:
+  internal:
+    name: koadr_internal
+  # Created once on the host:  docker network create proxy
+  proxy:
+    external: true
