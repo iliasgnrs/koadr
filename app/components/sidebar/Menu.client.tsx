@@ -21,6 +21,7 @@ import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { DEFAULT_AVATAR, profileStore } from '~/lib/stores/profile';
+import { sidebarOpen } from '~/lib/stores/sidebar';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
 
@@ -74,7 +75,8 @@ export const Menu = () => {
   const { duplicateCurrentChat, exportChat } = useChatHistory({ loadHistory: false });
   const menuRef = useRef<HTMLDivElement>(null);
   const [list, setList] = useState<ChatHistoryItem[]>([]);
-  const [open, setOpen] = useState(false);
+  const open = useStore(sidebarOpen);
+  const setOpen = useCallback((value: boolean) => sidebarOpen.set(value), []);
   const [dialogContent, setDialogContent] = useState<DialogContent>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isDocumentationOpen, setIsDocumentationOpen] = useState(false);
@@ -555,24 +557,6 @@ export const Menu = () => {
           </div>
         </div>
       </motion.div>
-
-      {/* Persistent sidebar trigger — always visible when sidebar is closed */}
-      {!open && !isSettingsOpen && (
-        <button
-          onClick={() => setOpen(true)}
-          className={classNames(
-            'fixed left-0 top-[72px] z-sidebar',
-            'bg-bolt-elements-background-depth-1',
-            'border border-l-0 border-bolt-elements-borderColor',
-            'rounded-r-lg p-1.5 shadow-sm',
-            'hover:bg-bolt-elements-background-depth-2',
-            'transition-colors',
-          )}
-          aria-label="Open sidebar"
-        >
-          <div className="i-ph:caret-right text-gray-500 dark:text-gray-400" />
-        </button>
-      )}
 
       <Suspense fallback={null}>
         <LazyControlPanel open={isSettingsOpen} onClose={handleSettingsClose} initialTab={settingsInitialTab as any} />
