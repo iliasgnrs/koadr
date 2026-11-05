@@ -1,22 +1,27 @@
 # Koadr on the VPS — lives at /opt/koadr on 91.98.89.225.
 #
-# Deploy:
-#   docker build -t koadr-web:latest .        # or pull from GHCR
-#   docker compose -f deploy/docker-compose.yml -p koadr up -d
+# The image is built by CI (.github/workflows/docker.yaml) and pushed to GHCR;
+# never build on the VPS. Deploy:
+#
+#   docker compose -p koadr pull
+#   docker compose -p koadr up -d
 #
 # Modelled on /opt/adapedu: the app publishes no host port, joins the shared
-# `proxy` network so the edge Caddy can reach it by container name, and keeps
-# Caddy next to the app so a vhost mistake cannot take down other projects.
+# `proxy` network so the edge Caddy can reach it by container name.
 
 name: koadr
 
 services:
   web:
-    image: ${KOADR_IMAGE:-koadr-web:latest}
+    image: ${KOADR_IMAGE:-ghcr.io/iliasgnrs/koadr:latest}
     container_name: koadr-web
     restart: unless-stopped
 
-    env_file: .env
+    # Optional: provider keys can also come from the browser (the app's normal
+    # flow). Marked optional so a fresh host can start before any key is added.
+    env_file:
+      - path: .env
+        required: false
 
     environment:
       NODE_ENV: production
