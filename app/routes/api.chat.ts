@@ -35,6 +35,7 @@ import { getStarterBuildProgress } from '~/lib/common/starterBuild';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
 import { getPluginToolDescriptions, getPluginTools } from '~/lib/plugins/adapters';
+import { PLUGINS_ENABLED } from '~/lib/plugins/flags';
 import { getProjectToolNames, projectToolDefinitions } from '~/lib/runtime/projectMcp.shared';
 import { withSecurity } from '~/lib/security';
 import { MCPService } from '~/lib/services/mcpService';
@@ -283,7 +284,8 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
             .map(([toolName]) => toolName),
         });
 
-        const enabledPlugins = body.plugins ?? [];
+        // While the plugins surface is hidden, ignore any plugins enabled on the account.
+        const enabledPlugins = PLUGINS_ENABLED ? (body.plugins ?? []) : [];
 
         const pluginTools = getPluginTools(
           enabledPlugins,

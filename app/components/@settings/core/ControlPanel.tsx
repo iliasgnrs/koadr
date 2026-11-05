@@ -28,6 +28,7 @@ import { DocumentationPanel } from '~/components/ui/DocumentationPanel';
 import { useConnectionStatus } from '~/lib/hooks/useConnectionStatus';
 import { useFeatures } from '~/lib/hooks/useFeatures';
 import { useNotifications } from '~/lib/hooks/useNotifications';
+import { PLUGINS_ENABLED } from '~/lib/plugins/flags';
 import { profileStore } from '~/lib/stores/profile';
 import { tabConfigurationStore, resetTabConfiguration } from '~/lib/stores/settings';
 import { classNames } from '~/utils/classNames';
@@ -53,7 +54,7 @@ const NAV_GROUPS: { label: string; tabs: TabType[] }[] = [
   { label: 'Workspace', tabs: ['features', 'data', 'event-logs'] },
   { label: 'AI Providers', tabs: ['cloud-providers', 'local-providers'] },
   { label: 'Integrations', tabs: ['connectors', 'mcp'] },
-  { label: 'Extensions', tabs: ['plugins'] },
+  ...(PLUGINS_ENABLED ? [{ label: 'Extensions', tabs: ['plugins' as TabType] }] : []),
 ];
 
 export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) => {
@@ -113,7 +114,8 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
     } else {
       // When opening, set initial tab if provided
       if (initialTab) {
-        setActiveTab(initialTab);
+        const isHiddenTab = initialTab === 'plugins' && !PLUGINS_ENABLED;
+        setActiveTab(isHiddenTab ? null : initialTab);
         setLoadingTab(null);
 
         if (initialTab === 'cloud-providers') {
@@ -166,7 +168,7 @@ export const ControlPanel = ({ open, onClose, initialTab }: ControlPanelProps) =
       case 'mcp':
         return <McpTab />;
       case 'plugins':
-        return <PluginTab />;
+        return PLUGINS_ENABLED ? <PluginTab /> : null;
 
       default:
         return null;

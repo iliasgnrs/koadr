@@ -72,11 +72,7 @@ const inlineThemeCode = stripIndents`
       root.dataset.compactMode = String(Boolean(options.compactMode));
       root.dataset.animatedTransitions = String(options.animatedTransitions !== false);
     } catch {}
-    let colorTheme = localStorage.getItem('bolt_theme');
-
-    if (!colorTheme) {
-      colorTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark-dracula' : 'light';
-    }
+    const colorTheme = localStorage.getItem('bolt_theme') || '${DEFAULT_THEME}';
 
     const mode = colorTheme === 'dark' || colorTheme.startsWith('dark-') ? 'dark' : 'light';
     document.querySelector('html')?.setAttribute('data-theme', mode);
@@ -154,7 +150,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 import { journeys, observeWebVitals } from './lib/performance/metrics';
 import { prebootWebContainer } from './lib/performance/webcontainer-optimizer';
 import { logStore } from './lib/stores/logs';
-import { themeStore } from './lib/stores/theme';
+import { DEFAULT_THEME, themeStore } from './lib/stores/theme';
 import globalStyles from './styles/index.scss?url';
 import { stripIndents } from './utils/stripIndent';
 

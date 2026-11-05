@@ -10,7 +10,7 @@ export function themeIsDark() {
   return getThemeMode(themeStore.get()) === 'dark';
 }
 
-export const DEFAULT_THEME = 'light';
+export const DEFAULT_THEME: Theme = 'dark-halloween-harvest';
 
 export const themeStore = atom<Theme>(initStore());
 

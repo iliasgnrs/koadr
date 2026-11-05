@@ -13,6 +13,7 @@ import {
   Blocks,
 } from 'lucide-react';
 import type { TabType } from './types';
+import { PLUGINS_ENABLED } from '~/lib/plugins/flags';
 
 // GitLab icon component
 const GitLabIcon = () => (
@@ -119,7 +120,7 @@ export const DEFAULT_TAB_CONFIG = [
   { id: 'notifications', visible: true, window: 'user' as const, order: 6 },
   { id: 'event-logs', visible: true, window: 'user' as const, order: 7 },
   { id: 'mcp', visible: true, window: 'user' as const, order: 8 },
-  { id: 'plugins', visible: true, window: 'user' as const, order: 9 },
+  { id: 'plugins', visible: PLUGINS_ENABLED, window: 'user' as const, order: 9 },
 
   // Legacy individual connector tabs (hidden by default, kept for backward compatibility)
   { id: 'github', visible: false, window: 'user' as const, order: 10 },
