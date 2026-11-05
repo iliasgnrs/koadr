@@ -1,0 +1,188 @@
+# Supabase for Koadr — lives at /opt/supabase on the VPS.
+#
+# Deliberately trimmed from upstream (supabase/supabase/docker/docker-compose.yml):
+# only Postgres, GoTrue (auth) and PostgREST (rest). No studio, realtime, storage,
+# edge functions, imgproxy or supavisor — this host has no admin UI (the database
+# is reached with `psql` over an SSH tunnel) and every container costs RAM the
+# WordPress stack also needs.
+#
+# Deploy:
+#   docker compose -p supabase up -d
+#
+# Image tags are pinned. A floating `latest` cannot express a patch level, so a
+# stale local base can keep running a vuln while every tag still looks current —
+# the same trap documented in the wp-hosting stack.
+#
+# No `ports:` anywhere. PostgREST and GoTrue are reached by `koadr-web` over the
+# shared `koadr_internal` network; nothing is exposed to the host.
+
+name: supabase
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: supabase/postgres:17.6.1.136
+    container_name: supabase-db
+    restart: unless-stopped
+    # Exactly two mounts, both files that upstream also supplies and that the
+    # image does NOT ship itself:
+    #   roles.sql — sets authenticator/supabase_auth_admin passwords from
+    #               POSTGRES_PASSWORD. Without it every other service fails with
+    #               "password authentication failed".
+    #   jwt.sql   — records app.settings.jwt_exp, read by PostgREST.
+    #
+    # Do NOT add -_supabase.sql or anything into migrations/: mounting a file
+    # there shadows the image's directory listing and skips
+    # 10000000000000_demote-postgres.sql. That leaves `postgres` owning
+    # auth.uid, and GoTrue then dies with "must be owner of function uid".
+    volumes:
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      # Hands the auth schema + helper functions to supabase_auth_admin. Without
+      # it GoTrue crash-loops on "must be owner of function uid".
+      - ./volumes/db/99-auth-owner.sql:/docker-entrypoint-initdb.d/init-scripts/99-auth-owner.sql:ro
+      - db-data:/var/lib/postgresql/data
+      - db-config:/etc/postgresql-custom
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: "5432"
+      POSTGRES_PORT: "5432"
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      # Bootstrap superuser. The image's initdb runs as this user, and its
+      # migrate.sh connects as supabase_admin *before* any other role exists —
+      # so leaving this at `postgres` fails with 'role "supabase_admin" does
+      # not exist' and every dependent service then fails to authenticate.
+      POSTGRES_USER: supabase_admin
+      JWT_EXP: ${JWT_EXPIRY:-3600}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Matches upstream exactly. `config_file=` keeps the image's own tuned
+    # postgresql.conf; dropping it (or the -D in the image default) makes the
+    # container initialise a stock cluster without Supabase's roles.
+    command:
+      [
+        "postgres",
+        "-c",
+        "config_file=/etc/postgresql/postgresql.conf",
+        "-c",
+        "log_min_messages=fatal",
+      ]
+    mem_limit: 1g
+    cpus: 1
+    networks:
+      - supabase_internal
+    logging: *default-logging
+
+  auth:
+    image: supabase/gotrue:v2.197.0
+    container_name: supabase-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL}
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS}
+      GOTRUE_DISABLE_SIGNUP: "false"
+
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: ${JWT_EXPIRY:-3600}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_ISSUER: ${API_EXTERNAL_URL}
+
+      # Email + password and magic link only. No OAuth provider is configured.
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      # Verification links must actually be clicked, so autoconfirm stays off.
+      GOTRUE_MAILER_AUTOCONFIRM: "false"
+
+      # Transactional email goes through Resend's SMTP endpoint. Until a sending
+      # domain is verified, signup mail will fail loudly in `docker logs`.
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_ADMIN_EMAIL}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT}
+      GOTRUE_SMTP_USER: ${SMTP_USER}
+      GOTRUE_SMTP_PASS: ${SMTP_PASS}
+      GOTRUE_SMTP_SENDER_NAME: ${SMTP_SENDER_NAME}
+      GOTRUE_SMTP_MAX_FREQUENCY: 1s
+
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+
+      GOTRUE_LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    mem_limit: 256m
+    cpus: 0.5
+    networks:
+      - supabase_internal
+    logging: *default-logging
+
+  rest:
+    image: postgrest/postgrest:v14.18
+    container_name: supabase-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_DB_EXTRA_SEARCH_PATH: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_ADMIN_SERVER_PORT: "3001"
+      PGRST_ADMIN_SERVER_HOST: localhost
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY:-3600}
+    command: ["postgrest"]
+    healthcheck:
+      test: ["CMD", "postgrest", "--ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+    mem_limit: 256m
+    cpus: 0.5
+    networks:
+      - supabase_internal
+    logging: *default-logging
+
+networks:
+  # Shared with koadr-web so the app can reach postgrest:3000 and auth:9999 by
+  # container name. Created once by the koadr stack (`koadr_internal`).
+  supabase_internal:
+    name: koadr_internal
+    external: true
+
+volumes:
+  db-data:
+    name: supabase_db-data
+  db-config:
+    name: supabase_db-config
