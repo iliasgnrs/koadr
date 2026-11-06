@@ -118,8 +118,31 @@ export async function setMessages(
   });
 }
 
+/**
+ * Read a chat, falling back to the account when this browser has never seen it.
+ *
+ * The local copy wins when present: it is the one the user was just editing, and
+ * re-reading from the server could replace in-flight state. On a miss the remote
+ * copy is written back into IndexedDB so every downstream read — rewind, export,
+ * snapshots — keeps working without knowing where the chat came from.
+ */
 export async function getMessages(db: IDBDatabase, id: string): Promise<ChatHistoryItem> {
-  return (await getMessagesById(db, id)) || (await getMessagesByUrlId(db, id));
+  const local = (await getMessagesById(db, id)) || (await getMessagesByUrlId(db, id));
+
+  if (local) {
+    return local;
+  }
+
+  const { fetchRemoteChat, writeRemoteChatLocally } = await import('./remote-chats');
+  const remote = await fetchRemoteChat(id);
+
+  if (!remote) {
+    return undefined as unknown as ChatHistoryItem;
+  }
+
+  await writeRemoteChatLocally(db, remote);
+
+  return migrateChatMessages(remote as unknown as ChatHistoryItem);
 }
 
 export async function getMessagesByUrlId(db: IDBDatabase, id: string): Promise<ChatHistoryItem> {

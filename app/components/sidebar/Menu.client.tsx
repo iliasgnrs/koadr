@@ -20,6 +20,7 @@ import { SettingsButton, HelpButton } from '~/components/ui/SettingsButton';
 import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
+import { deleteRemoteChat, fetchRemoteChats } from '~/lib/persistence/remote-chats';
 import { DEFAULT_AVATAR, profileStore } from '~/lib/stores/profile';
 import { sidebarOpen } from '~/lib/stores/sidebar';
 import { classNames } from '~/utils/classNames';
@@ -90,13 +91,46 @@ export const Menu = () => {
     searchFields: ['description'],
   });
 
+  /*
+   * The sidebar shows local chats immediately, then merges the account's copy.
+   * Remote entries the browser has never opened are added as-is, so history made
+   * on another device appears without a page reload. Local entries win on id
+   * collision: they are the ones with unwritten in-flight state.
+   */
   const loadEntries = useCallback(() => {
-    if (db) {
-      getAll(db)
-        .then((list) => list.filter((item) => item.urlId && item.description))
-        .then(setList)
-        .catch((error) => toast.error(error.message));
+    if (!db) {
+      return;
     }
+
+    getAll(db)
+      .then((list) => list.filter((item) => item.urlId && item.description))
+      .then(async (local) => {
+        setList(local);
+
+        const remote = await fetchRemoteChats();
+
+        if (!remote?.length) {
+          return;
+        }
+
+        const known = new Set(local.map((item) => item.id));
+
+        const extra = remote
+          .filter((chat) => !known.has(chat.id) && chat.urlId && chat.description)
+          .map((chat) => ({
+            id: chat.id,
+            urlId: chat.urlId,
+            description: chat.description,
+            messages: chat.messages,
+            timestamp: chat.timestamp,
+            metadata: chat.metadata as never,
+          }));
+
+        if (extra.length > 0) {
+          setList([...local, ...extra]);
+        }
+      })
+      .catch((error) => toast.error(error.message));
   }, []);
 
   const deleteChat = useCallback(
@@ -116,6 +150,14 @@ export const Menu = () => {
 
       // Delete the chat from the database
       await deleteById(db, id);
+
+      /*
+       * Remove the account copy too, or the chat reappears on the next device.
+       * Failure here must not fail the whole delete: the local copy is already
+       * gone and the user asked for it to be gone.
+       */
+      await deleteRemoteChat(id);
+
       console.log('Successfully deleted chat:', id);
     },
     [db],

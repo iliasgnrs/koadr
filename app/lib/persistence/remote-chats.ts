@@ -107,3 +107,44 @@ export async function deleteRemoteChat(id: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Fetch a single chat by id, for cache misses.
+ *
+ * Returns the same shape IndexedDB stores, so the caller can repopulate the local
+ * cache and every downstream read keeps working unchanged.
+ */
+export async function fetchRemoteChat(id: string): Promise<RemoteChat | null> {
+  const chats = await fetchRemoteChats();
+
+  if (!chats) {
+    return null;
+  }
+
+  return chats.find((chat) => chat.id === id || chat.urlId === id) ?? null;
+}
+
+/**
+ * Write a chat fetched from the account into the local IndexedDB cache.
+ *
+ * Mirrors the record shape `setMessages` writes, so a hydrated chat is
+ * indistinguishable from one created on this browser.
+ */
+export async function writeRemoteChatLocally(database: IDBDatabase, chat: RemoteChat): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction('chats', 'readwrite');
+    const store = transaction.objectStore('chats');
+
+    store.put({
+      id: chat.id,
+      messages: chat.messages,
+      urlId: chat.urlId,
+      description: chat.description,
+      timestamp: chat.timestamp,
+      metadata: chat.metadata,
+    });
+
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
