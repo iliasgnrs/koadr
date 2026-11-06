@@ -16,6 +16,7 @@ import {
   type IChatMetadata,
 } from './db';
 import { createMessage, getMessageAnnotations, hasMessageFlag, type AnyPart } from './messageMigration';
+import { queueChatSave } from './remote-chats';
 import type { Snapshot } from './types';
 import type { FileMap } from '~/lib/stores/files';
 import { logStore } from '~/lib/stores/logs'; // Import logStore
@@ -652,6 +653,23 @@ ${value.content}
             chatMetadata.get(),
           );
         }
+
+        /*
+         * IndexedDB is the local cache; mirror the same snapshot to the account so
+         * history follows the user to another browser. Debounced inside
+         * queueChatSave, because this path runs on every streaming chunk.
+         *
+         * Deliberately after the local write: a failure here must not cost the
+         * user their local copy.
+         */
+        queueChatSave({
+          id: finalChatId,
+          urlId: _urlId,
+          description: description.get(),
+          messages: [...archivedMessages, ...messages],
+          timestamp: new Date().toISOString(),
+          metadata: chatMetadata.get() as Record<string, unknown> | undefined,
+        });
 
         /*
          * The IndexedDB write may finish after a route change; invalidate its
