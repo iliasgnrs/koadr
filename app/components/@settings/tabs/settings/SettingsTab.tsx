@@ -7,6 +7,7 @@ import { Card, CardContent } from '~/components/ui/Card';
 import { Switch } from '~/components/ui/Switch';
 import { getAllChats } from '~/lib/persistence/chats';
 import { openDatabase } from '~/lib/persistence/db';
+import { queueSettingsSync } from '~/lib/settings-client';
 import { setTheme, themeStore } from '~/lib/stores/theme';
 import { THEMES } from '~/types/theme';
 import { classNames } from '~/utils/classNames';
@@ -66,6 +67,9 @@ export default function SettingsTab() {
     root.dataset.cornerRadius = interfaceOptions.cornerRadius;
     root.dataset.compactMode = String(interfaceOptions.compactMode);
     root.dataset.animatedTransitions = String(interfaceOptions.animatedTransitions);
+
+    // Debounced write-through to the account, so a slider drag is one request.
+    queueSettingsSync();
   }, [interfaceOptions]);
 
   useEffect(() => {

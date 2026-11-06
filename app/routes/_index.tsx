@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
 import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
@@ -6,6 +7,8 @@ import { Header } from '~/components/header/Header';
 import { FirstRunOnboarding } from '~/components/onboarding/FirstRunOnboarding';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 import { requireUser } from '~/lib/auth-guard';
+import { beginApplyingRemote, endApplyingRemote, syncSettingsFromServer } from '~/lib/settings-client';
+import { setTheme } from '~/lib/stores/theme';
 
 export const meta: MetaFunction = () => {
   return [
@@ -37,6 +40,40 @@ export const loader = ({ context, request }: LoaderFunctionArgs) => {
  * to keep the UI clean and consistent with the design system.
  */
 export default function Index() {
+  /*
+   * Reconcile this browser with the account once per authenticated load.
+   *
+   * The page has already rendered from localStorage by the time this runs, so a
+   * slow or failed request never blocks the UI — it only means this device keeps
+   * its local choices for now.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    void syncSettingsFromServer().then((applied) => {
+      if (cancelled || !applied) {
+        return;
+      }
+
+      /*
+       * Applied through setTheme so the store, localStorage and the html
+       * attributes all move together. The remote flag stops the resulting
+       * setTheme() call from queueing a push back to the server.
+       */
+      beginApplyingRemote();
+
+      try {
+        setTheme(applied.theme as never);
+      } finally {
+        endApplyingRemote();
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-full w-full bg-bolt-elements-background-depth-1">
       <BackgroundRays />
