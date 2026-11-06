@@ -51,7 +51,16 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
         'Finish the current task only after running it and passing relevant checks after the latest edit. Report every planned criterion by its exact ID. The server attaches evidence from successful project tool calls automatically; do not provide process IDs, command names, or guessed evidence IDs. Use outcome blocked with a concrete reason if completion is impossible.',
       inputSchema: z.object({
         outcome: z.enum(['complete', 'blocked']),
-        summary: z.string().min(1).max(1000),
+
+        /*
+         * Clipped rather than rejected: a long summary is a cosmetic problem, but a
+         * schema violation surfaced as InvalidToolInputError and ended the turn
+         * after all the work had already succeeded.
+         */
+        summary: z
+          .string()
+          .min(1)
+          .transform((value) => (value.length > 1000 ? `${value.slice(0, 997)}...` : value)),
         criteria: z
           .array(
             z.object({
@@ -105,7 +114,12 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
 
         return {
           completed: true,
-          summary: input.summary,
+
+          /*
+           * Clipped here too: the transform on the schema is not applied to the input
+           * that `execute` receives, so a long summary would still reach the client.
+           */
+          summary: input.summary.length > 1000 ? `${input.summary.slice(0, 997)}...` : input.summary,
           criteria: plannedCriteria.map((criterion) => ({ id: criterion.id, evidence: progress.evidence })),
         };
       },

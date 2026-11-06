@@ -267,3 +267,32 @@ describe('agent build loop', () => {
     expect(getAgentCompletionProblems(progress)).toContain('Wait for pending project tool results before completing.');
   });
 });
+
+describe('instruction and tool-set agreement', () => {
+  /*
+   * Before a plan exists, `prepareStep` offers only `agent_plan`, but the guidance
+   * told the model to "use project_patch_file or project_write_file now". The model
+   * obeyed the prose instead of the tool list, called a tool that was not in the
+   * request, and the step died with NoSuchToolError — which is why a fresh chat
+   * stalled until the user typed "continue".
+   *
+   * Whatever the guidance says to call next must actually be offered.
+   */
+  it('asks for agent_plan while no plan exists', () => {
+    const progress = getAgentLoopProgress([user], true);
+
+    expect(progress.plan).toBeUndefined();
+
+    const instructions = getAgentLoopInstructions(progress);
+
+    expect(instructions).toContain('NEXT REQUIRED ACTION: Call agent_plan now');
+    expect(instructions).not.toContain('project_patch_file or project_write_file now');
+  });
+
+  it('only asks for file edits once the plan is recorded', () => {
+    const progress = getAgentLoopProgress([user, response(planned)], true);
+
+    expect(progress.plan).toBeDefined();
+    expect(getAgentLoopInstructions(progress)).toContain('project_patch_file or project_write_file now');
+  });
+});

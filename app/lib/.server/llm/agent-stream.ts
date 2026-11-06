@@ -1,5 +1,6 @@
 import {
   generateId,
+  NoSuchToolError,
   ToolChoiceViolationError,
   wrapLanguageModel,
   type LanguageModel,
@@ -533,7 +534,15 @@ export function withAgentStreamDeadlines(model: LanguageModel, limits = DEFAULT_
   });
 }
 
-/** The SDK buffers tool inputs until an attempt succeeds, preserving earlier steps on retry. */
+/**
+ * The SDK buffers tool inputs until an attempt succeeds, preserving earlier steps on retry.
+ *
+ * `NoSuchToolError` is retried. The active tool set is recomputed by `prepareStep`
+ * for every step, so a call to a tool that was not offered on the previous step
+ * can still succeed on the next one — that is the whole point of the plan gate.
+ * Treating it as fatal ended the turn with no preview, which is why a fresh chat
+ * died at the first `project_list_paths` before `agent_plan` had run.
+ */
 export function createAgentStreamRecovery(onRetry: (reason: 'tool-call' | 'provider') => void) {
   let retried = false;
   let firstError: unknown;
@@ -553,6 +562,20 @@ export function createAgentStreamRecovery(onRetry: (reason: 'tool-call' | 'provi
       (typeof status === 'number' && status >= 400 && status < 500)
     ) {
       return undefined;
+    }
+
+    /*
+     * `NoSuchToolError` reports itself as a bare Error with the tool name in the
+     * message, so it is matched by name and text rather than by class instance.
+     */
+    const unavailableTool =
+      NoSuchToolError.isInstance(error) || /unavailable tool|no such tool|does not exist/.test(message);
+
+    if (unavailableTool) {
+      retried = true;
+      onRetry('tool-call');
+
+      return { retry: true };
     }
 
     const retryable =

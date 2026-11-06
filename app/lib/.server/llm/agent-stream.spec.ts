@@ -1,6 +1,7 @@
 import {
   isStepCount,
   jsonSchema,
+  NoSuchToolError,
   streamText,
   tool,
   toUIMessageStream,
@@ -634,5 +635,59 @@ describe('wrapped model identity', () => {
     >;
 
     expect(wrapped.provider).toBe('deepseek.chat');
+  });
+});
+
+describe('unknown-tool retry', () => {
+  /*
+   * The live failure: the model called `project_list_paths` on the very first step,
+   * when only `agent_plan` was offered (the plan gate). The SDK raised
+   * NoSuchToolError, which the recovery callback treated as non-retryable, so the
+   * step died and the turn ended before the plan had even been recorded. The user
+   * then had to type "continue" by hand.
+   *
+   * The tool set is recomputed per step, so this error is recoverable: one retry
+   * lets the next step offer `agent_plan`, and the run proceeds.
+   */
+  const unavailableToolError = () => new NoSuchToolError({ toolName: 'project_list_paths' });
+
+  it('retries a NoSuchToolError instead of ending the turn', () => {
+    const onRetry = vi.fn();
+    const recovery = createAgentStreamRecovery(onRetry);
+
+    const decision = recovery.onError({ error: unavailableToolError() } as never);
+
+    expect(decision).toEqual({ retry: true });
+    expect(onRetry).toHaveBeenCalledExactlyOnceWith('tool-call');
+  });
+
+  it('matches on the message when the error is not the SDK class', () => {
+    const onRetry = vi.fn();
+    const recovery = createAgentStreamRecovery(onRetry);
+
+    const decision = recovery.onError({
+      error: new Error("Model tried to call unavailable tool 'project_read_file'. Available tools: agent_plan."),
+    } as never);
+
+    expect(decision).toEqual({ retry: true });
+  });
+
+  it('retries only once, so a model that keeps calling a missing tool still stops', () => {
+    const onRetry = vi.fn();
+    const recovery = createAgentStreamRecovery(onRetry);
+
+    expect(recovery.onError({ error: unavailableToolError() } as never)).toEqual({ retry: true });
+    expect(recovery.onError({ error: unavailableToolError() } as never)).toBeUndefined();
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the first error so the surfaced message names the real cause', () => {
+    const recovery = createAgentStreamRecovery(vi.fn());
+    const first = unavailableToolError();
+
+    recovery.onError({ error: first } as never);
+    recovery.onError({ error: new Error('second') } as never);
+
+    expect(recovery.getError(new Error('late'))).toBe(first);
   });
 });

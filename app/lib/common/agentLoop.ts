@@ -287,17 +287,19 @@ export function getAgentLoopInstructions(progress: ReturnType<typeof getAgentLoo
     return 'The completion gate accepted this task. Summarize the relevant changed files, passing checks, and fulfilled criteria. Do not start unrelated work.';
   }
 
-  const nextAction = progress.needsRepair
-    ? 'Repair the latest failed project tool action. Use its exact error, reread the file if needed, and retry only after correcting the cause. Do not run or complete yet.'
-    : !progress.edited
-      ? 'Use project_patch_file or project_write_file now to implement the requested change. Do not answer in prose or call agent_complete yet.'
-      : !progress.ran
-        ? 'Run the changed app or program now with project_run_command and purpose="run". Inspect its output.'
-        : !progress.tested
-          ? 'Run the smallest relevant check now with project_run_command and purpose="test". Wait for exit code 0; repair failures before continuing.'
-          : progress.plan?.requiresPreview && !progress.previewReady
-            ? 'Start or inspect the app preview now. Confirm it is running before completing.'
-            : 'Call agent_complete alone and report every recorded criterion by its exact ID. The server attaches evidence from successful project tool calls automatically; do not provide process IDs, command names, or guessed evidence IDs.';
+  const nextAction = !progress.plan
+    ? 'Call agent_plan now. It is the only tool available until the plan and its completion criteria are recorded. Do not call any project tool, do not read or write files, and do not answer in prose yet.'
+    : progress.needsRepair
+      ? 'Repair the latest failed project tool action. Use its exact error, reread the file if needed, and retry only after correcting the cause. Do not run or complete yet.'
+      : !progress.edited
+        ? 'Use project_patch_file or project_write_file now to implement the requested change. Do not answer in prose or call agent_complete yet.'
+        : !progress.ran
+          ? 'Run the changed app or program now with project_run_command and purpose="run". Inspect its output.'
+          : !progress.tested
+            ? 'Run the smallest relevant check now with project_run_command and purpose="test". Wait for exit code 0; repair failures before continuing.'
+            : progress.plan?.requiresPreview && !progress.previewReady
+              ? 'Start or inspect the app preview now. Confirm it is running before completing.'
+              : 'Call agent_complete alone and report every recorded criterion by its exact ID. The server attaches evidence from successful project tool calls automatically; do not provide process IDs, command names, or guessed evidence IDs.';
 
   return `Follow Plan -> edit -> run -> test -> repair. Record a short plan and observable completion criteria with agent_plan. Inspect relevant files, then use small exact patches. Run the app/program with purpose run; use an existing live server for follow-up UI edits. Run the smallest relevant available checks with purpose test and wait for exit code 0. If a check fails, inspect its output, patch the cause, and rerun the check. Any edit after a passing check requires fresh verification. Call agent_complete alone and report each planned criterion by its exact ID; the server attaches evidence from successful project tool calls automatically. A plan or started process alone is not completion. If no automated test script exists, use an available typecheck, lint, focused runtime assertion, or smoke check and explain its limits; do not invent passing tests. If work cannot proceed, report outcome blocked with a concrete reason.
 NEXT REQUIRED ACTION: ${nextAction}

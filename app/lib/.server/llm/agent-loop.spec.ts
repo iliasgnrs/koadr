@@ -307,3 +307,49 @@ describe('agent plan and completion tools', () => {
     });
   });
 });
+
+describe('agent_complete input tolerance', () => {
+  /*
+   * A live run failed at the very end: every criterion had passed, but the model
+   * wrote a long summary, the schema's `.max(1000)` rejected it, and
+   * InvalidToolInputError ended the turn — the user had to type "continue" to get
+   * the result. Length is cosmetic, so it is clipped rather than rejected.
+   */
+  it('clips an over-long summary instead of failing the whole completion', async () => {
+    const loop = createAgentLoopTools(
+      [
+        user,
+        {
+          role: 'assistant',
+          parts: [
+            part('agent_plan', { plan }),
+            part('project_patch_file', { patched: true, changed: true }, 'edit'),
+            part(
+              'project_run_command',
+              { processId: 'server', purpose: 'run', status: 'running', previewReady: true },
+              'run',
+            ),
+            part(
+              'project_run_command',
+              { processId: 'check', purpose: 'test', status: 'exited', exitCode: 0, previewReady: true },
+              'check',
+            ),
+          ],
+        },
+      ],
+      true,
+      true,
+    );
+
+    const summary = 'x'.repeat(4000);
+
+    const output = (await loop.tools.agent_complete.execute!({ ...completion, summary }, executeOptions)) as {
+      completed?: boolean;
+      summary?: string;
+    };
+
+    expect(output.completed).toBe(true);
+    expect(output.summary).toHaveLength(1000);
+    expect(output.summary?.endsWith('...')).toBe(true);
+  });
+});
