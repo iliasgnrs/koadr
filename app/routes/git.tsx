@@ -5,6 +5,7 @@ import { BaseChat } from '~/components/chat/BaseChat';
 import { GitUrlImport } from '~/components/git/GitUrlImport.client';
 import { Header } from '~/components/header/Header';
 import BackgroundRays from '~/components/ui/BackgroundRays';
+import { requireUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => {
   return [
@@ -17,6 +18,8 @@ export const meta: MetaFunction = () => {
 };
 
 export async function loader(args: LoaderFunctionArgs) {
+  requireUser(args.context, args.request);
+
   return Response.json({ url: args.params.url });
 }
 

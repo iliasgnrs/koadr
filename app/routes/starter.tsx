@@ -1,11 +1,18 @@
-import type { MetaFunction } from 'react-router';
+import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
 import { ClientOnly } from 'remix-utils/client-only';
 import { StarterTemplateImport } from '~/components/chat/StarterTemplateImport.client';
 import { Header } from '~/components/header/Header';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 import { LoadingOverlay } from '~/components/ui/LoadingOverlay';
+import { requireUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => [{ title: 'Start a blank app | Koadr' }];
+
+export const loader = ({ context, request }: LoaderFunctionArgs) => {
+  requireUser(context, request);
+
+  return Response.json({});
+};
 
 export default function Starter() {
   return (

@@ -1,0 +1,12 @@
+# Strips the /auth/v1 prefix that Supabase's SDK adds but GoTrue does not serve.
+# Upstream uses Kong/Envoy for this; a single Caddy directive replaces ~1 GB of
+# gateway for a 5 MB container.
+:9999 {
+	handle /auth/v1/* {
+		uri strip_prefix /auth/v1
+		reverse_proxy auth:9999
+	}
+
+	# Anything else is already a GoTrue path (/health, /signup, ...).
+	reverse_proxy auth:9999
+}

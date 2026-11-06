@@ -1,10 +1,11 @@
-import type { MetaFunction } from 'react-router';
+import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
 import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
 import { Header } from '~/components/header/Header';
 import { FirstRunOnboarding } from '~/components/onboarding/FirstRunOnboarding';
 import BackgroundRays from '~/components/ui/BackgroundRays';
+import { requireUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => {
   return [
@@ -17,7 +18,17 @@ export const meta: MetaFunction = () => {
   ];
 };
 
-export const loader = () => Response.json({});
+/*
+ * There is no guest mode (project decision), so the app shell requires a
+ * session. The guard runs on the server: an anonymous visitor is redirected to
+ * /login before any chat store is mounted, which also keeps the WebContainer
+ * from booting for someone who cannot use it.
+ */
+export const loader = ({ context, request }: LoaderFunctionArgs) => {
+  const user = requireUser(context, request);
+
+  return Response.json({ user });
+};
 
 /**
  * Landing page component for Bolt

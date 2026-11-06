@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { RouterContextProvider, type ServerBuild } from 'react-router';
 
 import type { BoltCloudflare } from '~/lib/cloudflare-context';
+import { getSupabaseSession } from '../app/lib/.server/supabase.ts';
 import { createNodeRuntimeContext } from './node-context.ts';
 
 /*
@@ -103,13 +104,34 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): boolean {
 const listener = createRequestListener({
   build,
   mode: 'production',
-  getLoadContext: (request, client) => {
-    const context = new RouterContextProvider() as RouterContextProvider & { cloudflare: BoltCloudflare };
+  getLoadContext: async (request, client) => {
+    const context = new RouterContextProvider() as RouterContextProvider & {
+      cloudflare: BoltCloudflare;
+      user: { id: string; email?: string } | null;
+    };
 
     context.cloudflare = createNodeRuntimeContext();
 
+    /*
+     * Resolve the session once per request so loaders can read `context.user`
+     * synchronously. Done here rather than in every loader because GoTrue would
+     * otherwise be called once per matched route.
+     *
+     * A failure here must not take the whole request down — a database blip
+     * should surface as "signed out", not as a 500 on the marketing page.
+     */
+    let user: { id: string; email?: string } | null = null;
+
+    try {
+      const session = await getSupabaseSession(request);
+
+      user = session.user;
+    } catch (error) {
+      console.error('Session resolution failed:', error);
+    }
+
     // Lets security.ts resolve the real client IP (rate limiting, bug reports).
-    return Object.assign(context, { clientAddress: client.address }) as typeof context;
+    return Object.assign(context, { clientAddress: client.address, user }) as typeof context;
   },
 });
 
