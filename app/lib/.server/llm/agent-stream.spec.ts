@@ -568,6 +568,13 @@ describe('tool markup recovery', () => {
   it.each([
     '<||DSML|| invoke name="project_get_process_output"><||DSML|| parameter name="processId" string="true">p-1<||DSML|| parameter></||DSML|| invoke>',
     '<antml:invoke name="project_get_process_output"><antml:parameter name="processId" string="true">p-1</antml:parameter></antml:invoke>',
+
+    /*
+     * Full-width bars (U+FF5C). A real session emitted these and the ASCII-only
+     * matcher missed them, so the raw markup reached the UI and the turn stalled
+     * waiting for a tool result that never came.
+     */
+    '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke name="project_get_process_output">\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter name="processId" string="true">p-1\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter>\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke>',
   ])('recovers a tool call printed as provider markup', async (markup) => {
     const result = await streamText({
       model: withAgentToolCallRecovery(withAgentStreamDeadlines(markupReply(markup)), vi.fn()),
@@ -586,7 +593,7 @@ describe('tool markup recovery', () => {
 
     // The raw markup must not reach the UI; only the recovered call and any prose may.
     const rendered = JSON.stringify(chunks);
-    expect(rendered).not.toMatch(/\|\|DSML\|\||antml:invoke|antml:parameter/);
+    expect(rendered).not.toMatch(/DSML|antml:invoke|antml:parameter/);
   });
 });
 

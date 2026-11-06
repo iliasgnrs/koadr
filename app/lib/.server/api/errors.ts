@@ -210,13 +210,19 @@ export function toSafeTextStream(stream: ReadableStream<string>): ReadableStream
         }
 
         controller.enqueue(encoder.encode(value));
-      } catch {
+      } catch (error) {
         failed = true;
-        logger.error('Streaming provider error');
+
+        /*
+         * Classify before masking. This used to emit the generic "provider
+         * request failed" text for every exception, so a NoSuchToolError — a
+         * model/tool-registration mismatch we can act on — looked like an API key
+         * problem. The user-visible text stays safe either way.
+         */
+        const safeMessage = toSafeStreamErrorMessage(error);
+
         reader.releaseLock();
-        controller.enqueue(
-          encoder.encode('Custom error: The AI provider request failed. Check your provider settings and try again.'),
-        );
+        controller.enqueue(encoder.encode(safeMessage));
         controller.close();
       }
     },

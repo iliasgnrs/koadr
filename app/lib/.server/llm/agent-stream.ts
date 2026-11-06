@@ -190,8 +190,16 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
                 continue;
               }
 
+              /*
+               * Nothing was recovered. Strip markup before flushing, or the user
+               * sees a tool call that will never execute.
+               */
               for (const part of buffered) {
-                controller.enqueue(part);
+                if (part.type === 'text-delta') {
+                  controller.enqueue({ ...part, delta: stripLeftoverToolMarkup(part.delta) });
+                } else {
+                  controller.enqueue(part);
+                }
               }
 
               controller.close();
@@ -229,14 +237,38 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
  * names. Well-formed calls are worth rescuing: the alternative is a turn that
  * only renders text and never runs the command.
  */
-const TOOL_MARKUP_PREFIX = '(?:\\|\\|\\s*)?(?:(?:DSML|antml)\\|\\|\\s*|antml:)?';
+/*
+ * Bar variants seen in the wild: ASCII `|`, full-width `｜` (U+FF5C), and the
+ * heavy/double forms some models emit. Matching only ASCII is what let
+ * `｜｜DSML｜｜ invoke ...` through as visible text: the recovery regex found no
+ * block, so the raw markup was flushed to the UI and the turn stalled waiting
+ * for a tool result that could never arrive.
+ */
+const TOOL_MARKUP_BARS = '[|\uFF5C\u2225\u2016]';
 
+/*
+ * Optional run of bars followed by optional whitespace, e.g. `||DSML|| `,
+ * `｜｜DSML｜｜ `, or nothing at all for the `antml:` form.
+ *
+ * The whitespace matters: the original matched `||DSML|| invoke` only because of
+ * `\s*` after the bars. Widening the bars alone was not enough — the run is
+ * matched as a unit here so the pattern stays valid inside a template literal.
+ */
+const TOOL_MARKUP_BARS_OPT = `${TOOL_MARKUP_BARS}{0,2}\\s*`;
+const TOOL_MARKUP_PREFIX = `(?:${TOOL_MARKUP_BARS_OPT})?(?:(?:DSML|antml)${TOOL_MARKUP_BARS_OPT}|antml:)?`;
+
+/*
+ * Some providers omit the leading `<` entirely: the live failure was
+ * `｜｜DSML｜｜ invoke name="...">` with no angle bracket. The bar-prefixed forms
+ * are therefore matched with an optional `<`; the plain `antml:` form still
+ * requires it, because without it any prose would match.
+ */
 const TOOL_MARKUP_BLOCK = new RegExp(
-  `<${TOOL_MARKUP_PREFIX}invoke\\b[^>]*>[\\s\\S]*?</${TOOL_MARKUP_PREFIX}invoke>`,
+  `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}invoke\\b[^>]*>[\\s\\S]*?(?:<|\/|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}invoke>`,
   'g',
 );
 const TOOL_MARKUP_PARAMETER = new RegExp(
-  `<${TOOL_MARKUP_PREFIX}parameter\\b[^>]*\\bname\\s*=\\s*"([^"]+)"[^>]*>([\\s\\S]*?)</${TOOL_MARKUP_PREFIX}parameter>`,
+  `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter\\b[^>]*\\bname\\s*=\\s*"([^"]+)"[^>]*>([\\s\\S]*?)(?:<|\\/|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter>`,
   'g',
 );
 
@@ -287,6 +319,28 @@ function recoverMarkupToolCalls(
   }
 
   return choice?.type === 'required' || calls.some((call) => call.name === choice?.toolName) ? calls : [];
+}
+
+/**
+ * Last line of defence: drop any leftover provider markup from text that is about
+ * to be shown to the user.
+ *
+ * Recovery above only *rescues* well-formed calls. When a call cannot be rescued
+ * — an unknown tool name, a half-written block, a delimiter we do not recognise —
+ * the markup must not be rendered as prose. Leaving it visible is what made the
+ * UI look hung: the user sees a tool call that will never run.
+ */
+const LEFTOVER_MARKUP = new RegExp(
+  `<${TOOL_MARKUP_PREFIX}(?:invoke|parameter)\\b[^>]*>[\\s\\S]*?` +
+    `<\\/${TOOL_MARKUP_PREFIX}(?:invoke|parameter)>|<${TOOL_MARKUP_PREFIX}(?:invoke|parameter)\\b[^>]*>`,
+  'g',
+);
+
+function stripLeftoverToolMarkup(text: string): string {
+  return text
+    .replace(LEFTOVER_MARKUP, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /**
