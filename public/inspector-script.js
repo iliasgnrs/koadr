@@ -362,6 +362,19 @@
   }
 
   // Function to activate/deactivate inspector
+  /**
+   * Safe body accessor.
+   *
+   * The preview script is injected ahead of the page's own markup, so it can run
+   * before <body> exists — which is exactly what happened when a generated page
+   * used `<body class="...">`: the parser had not created the element yet and
+   * `document.body.classList` threw, taking the whole preview down with
+   * "Cannot read properties of null (reading 'classList')".
+   */
+  function getBody() {
+    return document.body || null;
+  }
+
   function setInspectorActive(active) {
     isInspectorActive = active;
 
@@ -382,14 +395,22 @@
         document.head.appendChild(inspectorStyle);
       }
 
-      document.body.classList.add('inspector-active');
+      const body = getBody();
+
+      if (body) {
+        body.classList.add('inspector-active');
+      }
 
       // Add event listeners
       document.addEventListener('mousemove', handleMouseMove, true);
       document.addEventListener('click', handleClick, true);
       document.addEventListener('mouseleave', handleMouseLeave, true);
     } else {
-      document.body.classList.remove('inspector-active');
+      const body = getBody();
+
+      if (body) {
+        body.classList.remove('inspector-active');
+      }
 
       // Remove highlight
       if (currentHighlight) {
