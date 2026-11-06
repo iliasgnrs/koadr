@@ -11,6 +11,7 @@
   // Function to get relevant styles
   function getRelevantStyles(element) {
     const computedStyles = window.getComputedStyle(element);
+
     const relevantProps = [
       'display',
       'position',
@@ -35,7 +36,10 @@
     const styles = {};
     relevantProps.forEach((prop) => {
       const value = computedStyles.getPropertyValue(prop);
-      if (value) styles[prop] = value;
+
+      if (value) {
+        styles[prop] = value;
+      }
     });
 
     return styles;
@@ -52,6 +56,7 @@
 
     // Add classes if present
     let className = '';
+
     if (element.className) {
       if (typeof element.className === 'string') {
         className = element.className;
@@ -73,6 +78,7 @@
   // Function to create element display text
   function createElementDisplayText(element) {
     const tagName = element.tagName.toLowerCase();
+
     let displayText = `<${tagName}`;
 
     // Add ID attribute
@@ -82,6 +88,7 @@
 
     // Add class attribute (limit to first 3 classes for readability)
     let className = '';
+
     if (element.className) {
       if (typeof element.className === 'string') {
         className = element.className;
@@ -102,6 +109,7 @@
     const importantAttrs = ['type', 'name', 'href', 'src', 'alt', 'title'];
     importantAttrs.forEach((attr) => {
       const value = element.getAttribute(attr);
+
       if (value) {
         const truncatedValue = value.length > 30 ? value.substring(0, 30) + '...' : value;
         displayText += ` ${attr}="${truncatedValue}"`;
@@ -112,8 +120,10 @@
 
     // Add text content preview for certain elements
     const textElements = ['span', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'button', 'a', 'label'];
+
     if (textElements.includes(tagName) && element.textContent) {
       const textPreview = element.textContent.trim().substring(0, 50);
+
       if (textPreview) {
         displayText += textPreview.length < element.textContent.trim().length ? textPreview + '...' : textPreview;
       }
@@ -171,6 +181,7 @@
         top: rect.top,
         left: rect.left,
       },
+
       // Add new readable formats
       selector: createReadableSelector(element),
       displayText: createElementDisplayText(element),
@@ -180,7 +191,9 @@
 
   // Helper function to get element class name consistently
   function getElementClassName(element) {
-    if (!element.className) return '';
+    if (!element.className) {
+      return '';
+    }
 
     if (typeof element.className === 'string') {
       return element.className;
@@ -194,6 +207,7 @@
   // Function to get element path (breadcrumb)
   function getElementPath(element) {
     const path = [];
+
     let current = element;
 
     while (current && current !== document.body && current !== document.documentElement) {
@@ -203,6 +217,7 @@
         pathSegment += `#${current.id}`;
       } else if (current.className) {
         const className = getElementClassName(current);
+
         if (className.trim()) {
           const firstClass = className.trim().split(/\s+/)[0];
           pathSegment += `.${firstClass}`;
@@ -213,7 +228,9 @@
       current = current.parentElement;
 
       // Limit path length
-      if (path.length >= 5) break;
+      if (path.length >= 5) {
+        break;
+      }
     }
 
     return path.join(' > ');
@@ -221,10 +238,15 @@
 
   // Event handlers
   function handleMouseMove(e) {
-    if (!isInspectorActive) return;
+    if (!isInspectorActive) {
+      return;
+    }
 
     const target = e.target;
-    if (!target || target === document.body || target === document.documentElement) return;
+
+    if (!target || target === document.body || target === document.documentElement) {
+      return;
+    }
 
     // Remove previous highlight
     if (currentHighlight) {
@@ -241,27 +263,34 @@
     window.parent.postMessage(
       {
         type: 'INSPECTOR_HOVER',
-        elementInfo: elementInfo,
+        elementInfo,
       },
       '*',
     );
   }
 
   function handleClick(e) {
-    if (!isInspectorActive) return;
+    if (!isInspectorActive) {
+      return;
+    }
 
     e.preventDefault();
     e.stopPropagation();
 
     const target = e.target;
-    if (!target || target === document.body || target === document.documentElement) return;
+
+    if (!target || target === document.body || target === document.documentElement) {
+      return;
+    }
 
     if (selectedElement && selectedElement !== target && editHistory.length > 0) {
       window.parent.postMessage({ type: 'INSPECTOR_PENDING_CHANGES' }, '*');
       return;
     }
 
-    if (selectedElement === target) return;
+    if (selectedElement === target) {
+      return;
+    }
 
     const elementInfo = createElementInfo(target);
     selectedElement = target;
@@ -274,14 +303,16 @@
     window.parent.postMessage(
       {
         type: 'INSPECTOR_CLICK',
-        elementInfo: elementInfo,
+        elementInfo,
       },
       '*',
     );
   }
 
   function restoreEdit(edit) {
-    if (!edit.element?.isConnected) return;
+    if (!edit.element?.isConnected) {
+      return;
+    }
 
     if (edit.type === 'style') {
       if (edit.previousValue) {
@@ -295,7 +326,9 @@
   }
 
   function handleEditMessage(message) {
-    if (!selectedElement?.isConnected) return;
+    if (!selectedElement?.isConnected) {
+      return;
+    }
 
     if (
       message.type === 'INSPECTOR_EDIT_STYLE' &&
@@ -309,8 +342,10 @@
         previousValue: selectedElement.style.getPropertyValue(message.property),
         previousPriority: selectedElement.style.getPropertyPriority(message.property),
       });
+
       if (message.value === message.originalComputedValue) {
         editHistory = editHistory.filter((edit) => edit.type !== 'style' || edit.property !== message.property);
+
         const originalInlineValue = selectedOriginalInlineStyles[message.property] || '';
         const originalInlinePriority = selectedOriginalInlinePriorities[message.property] || '';
 
@@ -324,6 +359,7 @@
       }
     } else if (message.type === 'INSPECTOR_EDIT_TEXT' && typeof message.value === 'string') {
       editHistory.push({ type: 'text', element: selectedElement, previousValue: selectedElement.innerHTML });
+
       if (message.value === message.originalText) {
         editHistory = editHistory.filter((edit) => edit.type !== 'text');
         selectedElement.innerHTML = selectedOriginalInnerHTML;
@@ -333,9 +369,13 @@
     } else if (message.type === 'INSPECTOR_UNDO') {
       restoreEdit(editHistory.pop());
     } else if (message.type === 'INSPECTOR_RESET') {
-      while (editHistory.length) restoreEdit(editHistory.pop());
+      while (editHistory.length) {
+        restoreEdit(editHistory.pop());
+      }
     } else if (message.type === 'INSPECTOR_DESELECT') {
-      while (editHistory.length) restoreEdit(editHistory.pop());
+      while (editHistory.length) {
+        restoreEdit(editHistory.pop());
+      }
       selectedElement = null;
       selectedOriginalInlineStyles = {};
       selectedOriginalInlinePriorities = {};
@@ -344,7 +384,9 @@
   }
 
   function handleMouseLeave() {
-    if (!isInspectorActive) return;
+    if (!isInspectorActive) {
+      return;
+    }
 
     // Remove highlight
     if (currentHighlight) {
@@ -375,6 +417,22 @@
     return document.body || null;
   }
 
+  /**
+   * Run `callback` once the document can be mutated safely.
+   *
+   * `loading` means the parser is still working and `document.body` may not exist
+   * yet; `interactive`/`complete` mean both <head> and <body> are present.
+   */
+  function whenDocumentReady(callback) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', callback, { once: true });
+
+      return;
+    }
+
+    callback();
+  }
+
   function setInspectorActive(active) {
     isInspectorActive = active;
 
@@ -392,7 +450,7 @@
             background-color: rgba(59, 130, 246, 0.1) !important;
           }
         `;
-        document.head.appendChild(inspectorStyle);
+        (document.head ?? document.documentElement).appendChild(inspectorStyle);
       }
 
       const body = getBody();
@@ -432,11 +490,19 @@
   }
 
   // Listen for messages from parent
-  window.addEventListener('message', function (event) {
-    if (event.source !== window.parent) return;
+  window.addEventListener('message', (event) => {
+    if (event.source !== window.parent) {
+      return;
+    }
 
     if (event.data.type === 'INSPECTOR_ACTIVATE') {
-      setInspectorActive(event.data.active);
+      /*
+       * The script runs from <head>, before <body> is parsed. Activating here
+       * would touch document.body too early, which is how the preview died with
+       * "Cannot read properties of null". Queue the request until the document
+       * is interactive, then apply it.
+       */
+      whenDocumentReady(() => setInspectorActive(event.data.active));
     } else if (
       event.data.type === 'INSPECTOR_EDIT_STYLE' ||
       event.data.type === 'INSPECTOR_EDIT_TEXT' ||

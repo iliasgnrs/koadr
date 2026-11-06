@@ -373,7 +373,13 @@ describe('targeted project file edits', () => {
       newText: 'button: green',
     });
     expect(stale.isError).toBe(true);
-    expect(stale.content).toEqual([{ type: 'text', text: expect.stringContaining('Read the file again') }]);
+
+    /*
+     * The conflict now returns the current content inline, so the model does not
+     * need a separate read before retrying.
+     */
+    expect(stale.content).toEqual([{ type: 'text', text: expect.stringContaining('currentContent') }]);
+    expect(stale.content).toEqual([{ type: 'text', text: expect.stringContaining('// user edit') }]);
 
     const unchecked = await bridge!.callTool('project_patch_file', {
       path: 'src/App.tsx',

@@ -47,6 +47,42 @@ describe('toSafeStreamErrorMessage', () => {
     expect(toSafeStreamErrorMessage(missing.message)).not.toContain('secret-value');
   });
 
+  it('suggests the real tool when the model invents a similar name', () => {
+    /*
+     * The live failure: the model called `project_read_command_output`, which has
+     * never existed, while `project_get_process_output` was available. A dead-end
+     * message cost the rest of the turn.
+     */
+    const error = new NoSuchToolError({
+      toolName: 'project_read_command_output',
+      availableTools: ['project_write_file', 'project_run_command', 'project_get_process_output'],
+    });
+
+    const message = toSafeStreamErrorMessage(error);
+
+    expect(message).toContain('project_read_command_output');
+    expect(message).toContain('Did you mean "project_get_process_output"');
+  });
+
+  it('does not guess when nothing is close', () => {
+    const error = new NoSuchToolError({
+      toolName: 'project_frobnicate_everything',
+      availableTools: ['web_fetch', 'web_search'],
+    });
+
+    expect(toSafeStreamErrorMessage(error)).not.toContain('Did you mean');
+  });
+
+  it('never reflects a name that does not look like a tool identifier', () => {
+    // Sanitisation: arbitrary strings must not come back to the client.
+    const error = new NoSuchToolError({ toolName: '<script>alert(1)</script>' });
+
+    const message = toSafeStreamErrorMessage(error);
+
+    expect(message).not.toContain('script');
+    expect(message).toContain('unavailable tool');
+  });
+
   it('recognizes a provider 429 even when its message does not mention the status', () => {
     const error = Object.assign(new Error('Provider returned error: secret-value'), { statusCode: 429 });
 

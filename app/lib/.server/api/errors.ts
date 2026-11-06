@@ -128,6 +128,95 @@ export function toMissingCredentialError(provider: string, providerMessage?: str
   });
 }
 
+/**
+ * Turn an unknown tool name into something actionable.
+ *
+ * A real session called `project_read_command_output`, which has never existed —
+ * the tool is `project_get_process_output`. The old message ("use one of the
+ * supplied tools") gave the model nothing to correct towards, so it retried and
+ * burned the turn. Naming the closest match costs one string compare and usually
+ * ends the loop immediately.
+ */
+function describeUnknownTool(error: unknown): string {
+  const requested =
+    typeof error === 'object' && error !== null && 'toolName' in error
+      ? String((error as { toolName: unknown }).toolName)
+      : '';
+  const available =
+    typeof error === 'object' && error !== null && 'availableTools' in error
+      ? ((error as { availableTools?: string[] }).availableTools ?? [])
+      : [];
+
+  if (!requested) {
+    return 'The model requested an unavailable tool. Use one of the supplied tools instead.';
+  }
+
+  /*
+   * Only echo a name that looks like one of ours. The sanitisation tests feed
+   * arbitrary strings (`secret-value`) through this path and require that nothing
+   * of the sort is reflected back to the client; a provider diagnostic could
+   * carry anything, so the pattern is the gate rather than trust in the caller.
+   */
+  if (!/^[a-z][a-z0-9_]{2,64}$/.test(requested)) {
+    return 'The model requested an unavailable tool. Use one of the supplied tools instead.';
+  }
+
+  const suggestion = findClosestTool(requested, available);
+
+  return suggestion
+    ? `Tool "${requested}" does not exist. Did you mean "${suggestion}"? Use only the supplied tool names.`
+    : `Tool "${requested}" does not exist. Use only the supplied tool names.`;
+}
+
+/**
+ * Closest available name by token overlap, e.g. `project_read_command_output`
+ * against `project_get_process_output` shares the `project` prefix and the
+ * `output` suffix. Deliberately simple: a wrong suggestion is harmless, because
+ * the model still has to pick a name that exists.
+ */
+function findClosestTool(requested: string, available: string[]): string | undefined {
+  if (!available.length) {
+    return undefined;
+  }
+
+  const tokens = (value: string) =>
+    new Set(
+      value
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean),
+    );
+
+  const wanted = tokens(requested);
+
+  let best: string | undefined;
+  let bestScore = 0;
+
+  /*
+   * Prefix and suffix carry more signal than any single token. `project_..._output`
+   * is a much better guess than `project_run_command` for
+   * `project_read_command_output`, even though both share two tokens with it —
+   * which is exactly the tie that picked the wrong tool on the first attempt.
+   */
+  const head = (value: string) => value.toLowerCase().split('_')[0];
+  const tail = (value: string) => value.toLowerCase().split('_').pop() ?? '';
+
+  for (const candidate of available) {
+    const overlap = [...tokens(candidate)].filter((token) => wanted.has(token)).length;
+
+    const score =
+      overlap + (head(candidate) === head(requested) ? 1 : 0) + (tail(candidate) === tail(requested) ? 2 : 0);
+
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  // Require at least the shared namespace token, or any coincidence would suggest.
+  return bestScore >= 2 ? best : undefined;
+}
+
 /** Converts a streaming provider error to a client-safe hint without forwarding diagnostics. */
 export function toSafeStreamErrorMessage(error: unknown): string {
   const providerMessage = error instanceof Error ? error.message : String(error);
@@ -151,7 +240,7 @@ export function toSafeStreamErrorMessage(error: unknown): string {
   }
 
   if (NoSuchToolError.isInstance(error) || normalizedMessage.startsWith('model tried to call unavailable tool ')) {
-    return 'Custom error: The model requested an unavailable tool. Use one of the supplied tools instead.';
+    return `Custom error: ${describeUnknownTool(error)}`;
   }
 
   if (providerMessage.includes('model') && providerMessage.includes('not found')) {

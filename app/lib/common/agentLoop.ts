@@ -270,7 +270,13 @@ export function getAgentLoopInstructions(progress: ReturnType<typeof getAgentLoo
   }
 
   if (progress.status === 'blocked') {
-    return 'Stop using tools. Explain the blocker or denied operation and list unmet completion criteria without claiming success.';
+    /*
+     * A live session reported "this session exposes no command runner" while
+     * project_run_command was still registered and had just succeeded. The claim
+     * was invented, so the instruction tells the model not to assert tooling is
+     * missing without evidence.
+     */
+    return 'Stop using tools. Explain the blocker or denied operation and list unmet completion criteria without claiming success. Do not claim a tool or command runner is unavailable unless a call to it actually failed with that error.';
   }
 
   if (progress.status === 'limited') {

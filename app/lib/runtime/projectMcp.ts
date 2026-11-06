@@ -375,8 +375,31 @@ export async function createProjectMcpBridge() {
             (revisionToCheck !== undefined && (await getFileRevision(content)) !== revisionToCheck) ||
             (expectedContent !== undefined && content !== expectedContent)
           ) {
+            /*
+             * Return the current file inline. The model previously had to call
+             * project_read_file to discover what changed, then patch again — two
+             * round trips per conflict, and a real session burned three attempts
+             * on the same stale patch anyway.
+             */
+            const currentRevision = await getFileRevision(content);
+
+            /*
+             * The recorded revision is deliberately NOT updated here. It is the
+             * evidence that the model has actually seen this file, and a rejected
+             * patch is not evidence of that — a spec asserts a patch with no
+             * revision is refused, and updating it would silently make the next
+             * unchecked patch succeed.
+             */
             throw new Error(
-              'Patch conflict: the file changed or expectedContent was copied incorrectly. Read the file again and use its revision as expectedRevision; do not repeat the stale patch.',
+              [
+                'Patch conflict: the file changed since you read it.',
+                `Current revision: ${currentRevision}`,
+                'currentContent (use this instead of re-reading):',
+                '<<<FILE',
+                content,
+                'FILE>>>',
+                'Apply the change again against the content above. Do not resend the same patch.',
+              ].join('\n'),
             );
           }
 
@@ -612,6 +635,31 @@ export async function createProjectMcpBridge() {
     },
   );
 
+  /**
+   * Catches commands that cannot possibly run, before spawning a shell.
+   *
+   * A live session sent `node -e "...&gt;...&lt;..."` — HTML entities in a shell
+   * command, copied from rendered output rather than written as shell. It failed
+   * twice with a JS parse error and the model kept retrying variants. Detecting the
+   * shape here saves the round trip and, more importantly, tells the model *why*.
+   *
+   * Deliberately shallow: only patterns that are almost certainly mistakes. A
+   * legitimate command piping a heredoc is not flagged.
+   */
+  function describeMangledCommand(command: string): string | undefined {
+    if (/&(?:gt|lt|amp|quot|#\d+);/.test(command)) {
+      return 'Command contains HTML entities (&gt;, &lt;, &amp;). Write the shell command literally; do not copy it from rendered output.';
+    }
+
+    const quotes = (command.match(/(?<!\\)"/g) ?? []).length;
+
+    if (quotes % 2 !== 0) {
+      return 'Command has an unbalanced double quote, so it cannot parse. Use a single-quoted heredoc or a script file instead of nested quotes.';
+    }
+
+    return undefined;
+  }
+
   server.registerTool(
     'project_run_command',
     {
@@ -653,6 +701,12 @@ export async function createProjectMcpBridge() {
             }
 
             processes.delete(completed[0]);
+          }
+
+          const commandProblem = describeMangledCommand(command);
+
+          if (commandProblem) {
+            throw new Error(commandProblem);
           }
 
           const wc = await webcontainer;
