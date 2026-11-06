@@ -1,7 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { useState, useCallback } from 'react';
 import { toast } from 'react-toastify';
-import { DEFAULT_AVATARS, profileStore, updateProfile } from '~/lib/stores/profile';
+import { DEFAULT_AVATARS, profileStore, saveProfileToAccount, updateProfile } from '~/lib/stores/profile';
 import { classNames } from '~/utils/classNames';
 import { debounce } from '~/utils/debounce';
 
@@ -14,6 +14,12 @@ export default function ProfileTab() {
   const debouncedUpdate = useCallback(
     debounce((field: 'username' | 'bio', value: string) => {
       updateProfile({ [field]: value });
+
+      if (field === 'username') {
+        // Mirror to the account so the name follows the user to another device.
+        void saveProfileToAccount({ username: value });
+      }
+
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
     }, 1000),
     [],
@@ -42,6 +48,7 @@ export default function ProfileTab() {
 
         const base64String = reader.result;
         updateProfile({ avatar: base64String });
+        void saveProfileToAccount({ avatar: base64String });
         setIsUploading(false);
         setIsAvatarPickerOpen(false);
         toast.success('Profile picture updated');

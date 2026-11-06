@@ -8,6 +8,7 @@ import { FirstRunOnboarding } from '~/components/onboarding/FirstRunOnboarding';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 import { requireUser } from '~/lib/auth-guard';
 import { beginApplyingRemote, endApplyingRemote, syncSettingsFromServer } from '~/lib/settings-client';
+import { hydrateProfileFromAccount } from '~/lib/stores/profile';
 import { setTheme } from '~/lib/stores/theme';
 
 export const meta: MetaFunction = () => {
@@ -48,6 +49,13 @@ export default function Index() {
    * its local choices for now.
    */
   useEffect(() => {
+    /*
+     * The sidebar shows the account as soon as this resolves; until then it may
+     * briefly show a cached name. Both calls are independent so a slow one does
+     * not delay the other.
+     */
+    void hydrateProfileFromAccount();
+
     let cancelled = false;
 
     void syncSettingsFromServer().then((applied) => {

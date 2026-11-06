@@ -23,6 +23,7 @@ export default [
   { file: 'routes/api.settings.ts', path: '/api/settings' },
   { file: 'routes/api.settings.keys.ts', path: '/api/settings/keys' },
   { file: 'routes/api.chats.ts', path: '/api/chats' },
+  { file: 'routes/api.profile.ts', path: '/api/profile' },
   { file: 'routes/git.tsx', path: '/git' },
   { file: 'routes/starter.tsx', path: '/starter' },
   { file: 'routes/webcontainer.connect.$id.tsx', path: '/webcontainer/connect/:id' },

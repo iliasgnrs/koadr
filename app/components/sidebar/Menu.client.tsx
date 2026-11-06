@@ -21,7 +21,7 @@ import { ThemeSwitch } from '~/components/ui/ThemeSwitch';
 import { useSearchFilter } from '~/lib/hooks/useSearchFilter';
 import { db, deleteById, getAll, chatId, type ChatHistoryItem, useChatHistory } from '~/lib/persistence';
 import { deleteRemoteChat, fetchRemoteChats } from '~/lib/persistence/remote-chats';
-import { DEFAULT_AVATAR, profileStore } from '~/lib/stores/profile';
+import { DEFAULT_AVATAR, displayName, profileStore } from '~/lib/stores/profile';
 import { sidebarOpen } from '~/lib/stores/sidebar';
 import { classNames } from '~/utils/classNames';
 import { cubicEasingFn } from '~/utils/easings';
@@ -412,7 +412,7 @@ export const Menu = () => {
           <div className="flex items-center gap-3">
             <HelpButton onClick={() => setIsDocumentationOpen(true)} />
             <span className="font-medium text-sm text-bolt-elements-textPrimary truncate">
-              {profile?.username || 'Guest User'}
+              {displayName(profile) || 'Guest User'}
             </span>
             <div className="flex items-center justify-center w-[32px] h-[32px] overflow-hidden bg-bolt-elements-background-depth-3 text-bolt-elements-textSecondary rounded-full shrink-0">
               <img

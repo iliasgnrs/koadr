@@ -118,11 +118,21 @@ export async function syncSettingsFromServer(): Promise<{ theme: string } | null
 
   const local = readLocal();
 
+  /*
+   * A brand-new account has no saved theme here at all. In that case the account
+   * is authoritative and the app should land on the default rather than keep
+   * whatever a previous visitor left in this browser.
+   */
   if (!local.theme) {
-    return null;
+    const { DEFAULT_THEME } = await import('~/lib/stores/theme');
+
+    return { theme: DEFAULT_THEME };
   }
 
-  const decision = resolveSettings({ theme: local.theme as never, interfaceOptions: local.interfaceOptions }, remote);
+  const decision = resolveSettings(
+    { theme: local.theme as never, interfaceOptions: local.interfaceOptions, hasStoredTheme: true },
+    remote,
+  );
 
   if (decision.action === 'push-local') {
     queueSettingsSync();

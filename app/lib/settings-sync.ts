@@ -8,6 +8,14 @@ export interface InterfaceOptions {
   animatedTransitions: boolean;
 }
 
+export interface LocalSettings {
+  theme: Theme;
+  interfaceOptions: InterfaceOptions;
+
+  /** False when this browser has never stored a theme — i.e. a fresh visitor. */
+  hasStoredTheme?: boolean;
+}
+
 export interface RemoteSettings {
   /**
    * Kept as `string` because it comes from the database, which may hold a theme
@@ -59,7 +67,7 @@ export function isKnownTheme(value: unknown): value is Theme {
  * made while signed out.
  */
 export function resolveSettings(
-  local: { theme: Theme; interfaceOptions: InterfaceOptions },
+  local: LocalSettings,
   remote: RemoteSettings | null,
 ):
   | { action: 'apply-remote'; settings: { theme: Theme; interfaceOptions: InterfaceOptions } }
