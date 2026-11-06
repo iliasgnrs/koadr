@@ -142,6 +142,7 @@ services:
     cpus: 0.5
     networks:
       - supabase_internal
+      - proxy
     logging: *default-logging
 
   rest:
@@ -194,6 +195,12 @@ services:
     logging: *default-logging
 
 networks:
+  # The shared edge, so koadr.dev/auth/v1/* can reach GoTrue. That is how emailed
+  # confirmation and magic links resolve: GoTrue builds them from
+  # API_EXTERNAL_URL and they land on the public domain.
+  proxy:
+    external: true
+
   # Shared with koadr-web so the app can reach postgrest:3000 and auth:9999 by
   # container name. Created once by the koadr stack (`koadr_internal`).
   supabase_internal:
