@@ -1,4 +1,4 @@
-import { InvalidToolInputError, NoSuchToolError, ToolChoiceViolationError } from 'ai';
+import { APICallError, InvalidToolInputError, NoSuchToolError, ToolChoiceViolationError } from 'ai';
 import { createScopedLogger } from '~/utils/logger';
 
 const logger = createScopedLogger('api.errors');
@@ -137,15 +137,21 @@ export function toMissingCredentialError(provider: string, providerMessage?: str
  * burned the turn. Naming the closest match costs one string compare and usually
  * ends the loop immediately.
  */
-function describeUnknownTool(error: unknown): string {
+function describeUnknownTool(error: unknown, fallbackTools: string[] = []): string {
   const requested =
     typeof error === 'object' && error !== null && 'toolName' in error
       ? String((error as { toolName: unknown }).toolName)
       : '';
-  const available =
+  const supplied =
     typeof error === 'object' && error !== null && 'availableTools' in error
       ? ((error as { availableTools?: string[] }).availableTools ?? [])
       : [];
+
+  /*
+   * The SDK never populates `availableTools`, so the caller passes the real list.
+   * Prefer the error's own list when a provider does supply one.
+   */
+  const available = supplied.length ? supplied : fallbackTools;
 
   if (!requested) {
     return 'The model requested an unavailable tool. Use one of the supplied tools instead.';
@@ -218,14 +224,21 @@ function findClosestTool(requested: string, available: string[]): string | undef
 }
 
 /** Converts a streaming provider error to a client-safe hint without forwarding diagnostics. */
-export function toSafeStreamErrorMessage(error: unknown): string {
+export function toSafeStreamErrorMessage(error: unknown, availableTools: string[] = []): string {
   const providerMessage = error instanceof Error ? error.message : String(error);
   const normalizedMessage = providerMessage.toLowerCase();
 
   const statusCode =
     typeof error === 'object' && error !== null && 'statusCode' in error ? error.statusCode : undefined;
 
-  logger.error(`Streaming provider error (${error instanceof Error ? error.name : 'UnknownError'})`);
+  /*
+   * Log the diagnostic, not just the class. "Streaming provider error (UnknownError)"
+   * gave no way to tell a bad model name from a rejected tool call, which cost a
+   * full debugging round trip on a live failure.
+   */
+  logger.error(
+    `Streaming provider error (${error instanceof Error ? error.name : 'UnknownError'}): ${providerMessage.slice(0, 500)}`,
+  );
 
   if ((error instanceof Error && error.name === 'TimeoutError') || /timeout|timed\s*out/.test(normalizedMessage)) {
     return 'Custom error: The AI provider stopped responding before the next step completed. Completed file changes and tool results are preserved. Retry to continue, or select a different model.';
@@ -240,7 +253,7 @@ export function toSafeStreamErrorMessage(error: unknown): string {
   }
 
   if (NoSuchToolError.isInstance(error) || normalizedMessage.startsWith('model tried to call unavailable tool ')) {
-    return `Custom error: ${describeUnknownTool(error)}`;
+    return `Custom error: ${describeUnknownTool(error, availableTools)}`;
   }
 
   if (providerMessage.includes('model') && providerMessage.includes('not found')) {
@@ -269,6 +282,35 @@ export function toSafeStreamErrorMessage(error: unknown): string {
 
   if (providerMessage.includes('network') || providerMessage.includes('timeout')) {
     return 'Custom error: Network error. Please check your internet connection and try again.';
+  }
+
+  /*
+   * APICallError was previously unhandled, so every provider HTTP failure landed on
+   * the generic "check your provider settings" string, whatever the real status was.
+   * A 402 (out of credit) or a 400 (malformed request) both looked identical.
+   */
+  if (APICallError.isInstance(error)) {
+    const apiStatus = typeof statusCode === 'number' ? statusCode : undefined;
+
+    if (apiStatus === 402) {
+      return 'Custom error: The provider rejected the request for billing reasons. Add credit to the provider account and try again.';
+    }
+
+    if (apiStatus === 403) {
+      return 'Custom error: The provider refused access. Check that the API key has permission to use the selected model.';
+    }
+
+    if (apiStatus === 400 || apiStatus === 422) {
+      return 'Custom error: The provider rejected the request as invalid. This usually means the conversation is too long or contains content the model cannot accept. Start a new chat or select a different model.';
+    }
+
+    if (apiStatus === 404) {
+      return 'Custom error: The provider could not find the selected model or endpoint. Check that the model name is correct and available.';
+    }
+
+    if (typeof apiStatus === 'number' && apiStatus >= 500) {
+      return 'Custom error: The provider is returning server errors. Wait a moment and retry.';
+    }
   }
 
   return 'Custom error: The AI provider request failed. Check your provider settings and try again.';

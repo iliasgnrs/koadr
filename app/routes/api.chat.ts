@@ -131,6 +131,13 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
       }
     };
 
+    /*
+     * Populated inside the stream executor, but the outer `onError` hook needs it to
+     * produce a "did you mean" hint. Declared here because that hook runs in a
+     * different scope than `execute`.
+     */
+    const knownToolNames: string[] = [];
+
     const uiStream = createChatUIMessageStream(messages, {
       async execute({ writer }) {
         const filePaths = getFilePaths(files || {});
@@ -365,8 +372,16 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
 
         const recovery = createAgentStreamRecovery(notifyRetry);
 
+        /*
+         * The SDK builds NoSuchToolError with only `toolName` and never populates
+         * `availableTools`, so the suggestion logic had nothing to match against and
+         * every unknown tool produced the useless "use one of the supplied tools".
+         * The real list is known here, so it is passed in explicitly.
+         */
+        knownToolNames.push(...Object.keys(tools));
+
         const mapStreamError = (error: unknown) =>
-          toSafeStreamErrorMessage(recoveringAgent ? recovery.getError(error) : error);
+          toSafeStreamErrorMessage(recoveringAgent ? recovery.getError(error) : error, knownToolNames);
 
         const options: Omit<StreamingOptions, 'messages'> = {
           supabaseConnection: supabase,
@@ -607,7 +622,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
         // no-op: stream is managed by merged consumer
       },
       onError: (error: any) => {
-        return toSafeStreamErrorMessage(error);
+        return toSafeStreamErrorMessage(error, knownToolNames);
       },
     });
 

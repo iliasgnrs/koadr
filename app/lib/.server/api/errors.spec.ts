@@ -1,4 +1,4 @@
-import { InvalidToolInputError, NoSuchToolError } from 'ai';
+import { APICallError, InvalidToolInputError, NoSuchToolError } from 'ai';
 import { describe, expect, it } from 'vitest';
 import {
   toApiErrorResponse,
@@ -61,6 +61,24 @@ describe('toSafeStreamErrorMessage', () => {
     const message = toSafeStreamErrorMessage(error);
 
     expect(message).toContain('project_read_command_output');
+    expect(message).toContain('Did you mean "project_get_process_output"');
+  });
+
+  it('suggests from the caller-supplied list when the SDK omits availableTools', () => {
+    /*
+     * The SDK constructs NoSuchToolError with only `toolName`, so `availableTools`
+     * is always undefined on a real error. The previous test above passed the list
+     * itself and therefore never exercised production behaviour — the suggestion
+     * could not fire, and every unknown tool got the same dead-end message.
+     */
+    const error = new NoSuchToolError({ toolName: 'project_read_command_output' });
+
+    const message = toSafeStreamErrorMessage(error, [
+      'project_write_file',
+      'project_run_command',
+      'project_get_process_output',
+    ]);
+
     expect(message).toContain('Did you mean "project_get_process_output"');
   });
 
@@ -176,5 +194,26 @@ describe('toTokenLimitError', () => {
     expect(isTokenLimitFailure(new Error('Access token expired'))).toBe(false);
     expect(isTokenLimitFailure(new Error('Invalid API token'))).toBe(false);
     expect(isTokenLimitFailure(new ApiError('Typed token failure', { status: 400, code: 'token_limit' }))).toBe(false);
+  });
+
+  it('reports the provider status instead of the generic settings hint', () => {
+    /*
+     * APICallError used to fall through to "check your provider settings", so a
+     * 402 (no credit) and an oversized-context 400 looked identical to the user and
+     * to the agent, which then retried the same doomed request.
+     */
+    const make = (statusCode: number) =>
+      new APICallError({
+        message: `status ${statusCode}`,
+        url: 'https://provider.example',
+        requestBodyValues: {},
+        statusCode,
+      });
+
+    expect(toSafeStreamErrorMessage(make(402))).toContain('billing');
+    expect(toSafeStreamErrorMessage(make(400))).toContain('rejected the request as invalid');
+    expect(toSafeStreamErrorMessage(make(403))).toContain('refused access');
+    expect(toSafeStreamErrorMessage(make(404))).toContain('could not find the selected model');
+    expect(toSafeStreamErrorMessage(make(503))).toContain('server errors');
   });
 });

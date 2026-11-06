@@ -202,20 +202,29 @@ export function createAgentLoopTools<TaskToolName extends string = never>(
         };
       }
 
-      const editingTools = new Set([
-        'project_read_file',
-        'project_write_file',
-        'project_patch_file',
-        'project_create_directory',
+      /*
+       * Only the read-only path tools are held back before the first edit, to keep
+       * the model from exploring instead of writing. Everything else — including
+       * every run/process tool — stays visible.
+       *
+       * This used to be an allowlist, which silently dropped `project_run_command`
+       * and `project_get_process_output` once a plan existed; the model then called
+       * a tool it could not see, hit NoSuchToolError, and the turn ended before a
+       * preview. A denylist fails open: a new tool is available by default.
+       */
+      const deferredUntilFirstEdit = new Set([
         'project_list_paths',
         'project_search_content',
         'project_find_related_files',
-        'web_search',
-        'web_fetch',
       ]);
 
       const activeProjectTools = taskToolNames?.filter((toolName) => {
-        return progress.needsRepair || !progress.edited ? editingTools.has(toolName) : true;
+        // Repair runs and any task that already edited keep the full toolset.
+        if (progress.needsRepair || progress.edited) {
+          return true;
+        }
+
+        return !deferredUntilFirstEdit.has(toolName);
       });
 
       return {

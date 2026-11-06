@@ -67,7 +67,66 @@ describe('agent plan and completion tools', () => {
       true,
       ['project_read_file', 'project_run_command'],
     );
-    expect(loop.prepareStep({ steps: [] }).activeTools).toEqual(['project_read_file', 'agent_plan', 'agent_complete']);
+
+    /*
+     * `project_run_command` must stay visible before the first edit. The old
+     * allowlist dropped it, which is what produced the live failure: the model
+     * called a tool that was not in the request, the SDK raised
+     * NoSuchToolError, and the turn ended with no preview. Completion is still
+     * withheld here, because no run/test evidence exists yet.
+     */
+    expect(loop.prepareStep({ steps: [] }).activeTools).toEqual([
+      'project_read_file',
+      'project_run_command',
+      'agent_plan',
+      'agent_complete',
+    ]);
+  });
+
+  it('only defers the read-only exploration tools before the first edit', () => {
+    const allTools = [
+      'project_read_file',
+      'project_write_file',
+      'project_patch_file',
+      'project_create_directory',
+      'project_list_paths',
+      'project_search_content',
+      'project_find_related_files',
+      'project_run_command',
+      'project_get_process_output',
+      'project_stop_process',
+      'project_delete_path',
+      'web_search',
+      'web_fetch',
+      'some_future_tool',
+    ];
+
+    const loop = createAgentLoopTools(
+      [user, { role: 'assistant', parts: [part('agent_plan', { plan })] }],
+      true,
+      true,
+      allTools,
+    );
+
+    const active = loop.prepareStep({ steps: [] }).activeTools ?? [];
+
+    expect(active).not.toContain('project_list_paths');
+    expect(active).not.toContain('project_search_content');
+    expect(active).not.toContain('project_find_related_files');
+
+    for (const name of [
+      'project_run_command',
+      'project_get_process_output',
+      'project_stop_process',
+      'project_delete_path',
+      'web_search',
+      'web_fetch',
+    ]) {
+      expect(active).toContain(name);
+    }
+
+    // A denylist, not an allowlist: a tool added later must be available by default.
+    expect(active).toContain('some_future_tool');
   });
 
   it('rejects completion without actual run and test evidence', async () => {
