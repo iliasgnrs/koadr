@@ -1,6 +1,7 @@
 import Cookies from 'js-cookie';
 import React, { useState, useEffect, useCallback } from 'react';
 import { IconButton } from '~/components/ui/IconButton';
+import { saveKeyToAccount } from '~/lib/settings-client';
 import type { ProviderInfo } from '~/types/model';
 
 interface APIKeyManagerProps {
@@ -78,10 +79,12 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     // Save to parent state
     setApiKey(tempKey);
 
-    // Save to cookies
+    // Save to cookies, then mirror to the account when signed in.
     const currentKeys = getApiKeysFromCookies();
     const newKeys = { ...currentKeys, [provider.name]: tempKey };
     Cookies.set('apiKeys', JSON.stringify(newKeys));
+
+    void saveKeyToAccount(provider.name, tempKey);
 
     setIsEditing(false);
   };

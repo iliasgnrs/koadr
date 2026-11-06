@@ -1,4 +1,5 @@
-import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import type { ModelInfo } from '~/lib/modules/llm/types';
 import type { ProviderInfo } from '~/types/model';
@@ -48,7 +49,7 @@ export async function loader({
 
   // Get client side maintained API keys and provider settings from cookies
   const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+  const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
   const providerSettings = getProviderSettingsFromCookie(cookieHeader);
   const enabledProviderNames = new URL(request.url).searchParams.get('providers')?.split(',').filter(Boolean);
 

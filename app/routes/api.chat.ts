@@ -28,7 +28,8 @@ import { getWebResearchInstructions } from '~/lib/.server/llm/prompt-web-tools';
 import { getFilePaths, selectContext } from '~/lib/.server/llm/select-context';
 import { streamText, type StreamingOptions } from '~/lib/.server/llm/stream-text';
 import { extractPropertiesFromMessage } from '~/lib/.server/llm/utils';
-import { getApiKeysFromCookie, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest, getProviderSettingsFromCookie } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { getAgentLoopInstructions, getAgentLoopProgress } from '~/lib/common/agentLoop';
 import { CONTINUE_PROMPT } from '~/lib/common/prompts/prompts';
 import { getStarterBuildProgress } from '~/lib/common/starterBuild';
@@ -87,7 +88,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
   const designScheme = asDesignScheme(body.designScheme);
 
   const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+  const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
   const providerSettings: Record<string, IProviderSetting> = getProviderSettingsFromCookie(cookieHeader);
 
   /*

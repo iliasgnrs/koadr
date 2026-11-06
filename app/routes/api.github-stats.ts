@@ -1,4 +1,5 @@
-import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { withSecurity } from '~/lib/security';
 import type { GitHubUserResponse, GitHubStats } from '~/types/GitHub';
 
@@ -6,7 +7,7 @@ async function githubStatsLoader({ request, context }: { request: Request; conte
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
     // Try to get GitHub token from various sources
     const githubToken =

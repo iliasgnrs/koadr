@@ -1,5 +1,6 @@
 import type { LoaderFunction } from 'react-router';
-import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { LLMManager } from '~/lib/modules/llm/manager';
 
 export const loader: LoaderFunction = async ({ context, request }) => {
@@ -21,7 +22,7 @@ export const loader: LoaderFunction = async ({ context, request }) => {
 
   // Get API keys from cookie
   const cookieHeader = request.headers.get('Cookie');
-  const apiKeys = getApiKeysFromCookie(cookieHeader);
+  const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
   /*
    * Check API key in order of precedence:

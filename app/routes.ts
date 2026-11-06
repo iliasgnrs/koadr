@@ -21,6 +21,7 @@ export default [
   { file: 'routes/auth.callback.ts', path: '/auth/callback' },
   { file: 'routes/api.auth.ts', path: '/api/auth' },
   { file: 'routes/api.settings.ts', path: '/api/settings' },
+  { file: 'routes/api.settings.keys.ts', path: '/api/settings/keys' },
   { file: 'routes/git.tsx', path: '/git' },
   { file: 'routes/starter.tsx', path: '/starter' },
   { file: 'routes/webcontainer.connect.$id.tsx', path: '/webcontainer/connect/:id' },

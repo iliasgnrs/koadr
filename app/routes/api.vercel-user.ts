@@ -1,11 +1,12 @@
-import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { withSecurity } from '~/lib/security';
 
 async function vercelUserLoader({ request, context }: { request: Request; context: any }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
     // Try to get Vercel token from various sources
     let vercelToken =
@@ -83,7 +84,7 @@ async function vercelUserAction({ request, context }: { request: Request; contex
 
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
     // Try to get Vercel token from various sources
     let vercelToken =

@@ -163,3 +163,25 @@ export function applyInterfaceOptions(options: unknown) {
 }
 
 export { DEFAULT_INTERFACE_OPTIONS };
+
+/**
+ * Mirror a provider key to the account.
+ *
+ * Best-effort: the cookie copy is still written by the caller, so a failure here
+ * (signed out, offline) costs nothing except that the key stays browser-local.
+ * The key itself is never logged or stored anywhere else in the client.
+ */
+export async function saveKeyToAccount(provider: string, key: string): Promise<boolean> {
+  try {
+    const response = await fetch('/api/settings/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider, key }),
+      credentials: 'same-origin',
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}

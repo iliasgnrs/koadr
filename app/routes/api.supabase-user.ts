@@ -1,11 +1,12 @@
-import { getApiKeysFromCookie } from '~/lib/api/cookies';
+import { getApiKeysForRequest } from '~/lib/api/cookies';
+import { getUser } from '~/lib/auth-guard';
 import { withSecurity } from '~/lib/security';
 
 async function supabaseUserLoader({ request, context }: { request: Request; context: any }) {
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
     // Try to get Supabase token from various sources
     const supabaseToken =
@@ -87,7 +88,7 @@ async function supabaseUserAction({ request, context }: { request: Request; cont
 
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = getApiKeysFromCookie(cookieHeader);
+    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
 
     // Try to get Supabase token from various sources
     const supabaseToken =
