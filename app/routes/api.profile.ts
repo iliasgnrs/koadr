@@ -1,6 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router';
 import { getPgPool } from '~/lib/.server/pg';
-import { getSupabaseSession } from '~/lib/.server/supabase';
 import { requireApiUser } from '~/lib/auth-guard';
 
 /*
@@ -14,14 +13,24 @@ import { requireApiUser } from '~/lib/auth-guard';
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{2,32}$/;
 const MAX_AVATAR_LENGTH = 400_000; // a reasonable data-URL ceiling
 
-export async function loader({ context, request }: LoaderFunctionArgs) {
+export async function loader({ context }: LoaderFunctionArgs) {
   const user = requireApiUser(context);
-  const { client } = await getSupabaseSession(request);
 
-  const { data, error } = await client.from('profiles').select('username, avatar_url').eq('id', user.id).maybeSingle();
+  /*
+   * Direct Postgres rather than the Supabase client: the generated types for
+   * `profiles` predate onboarding_completed_at, and this route already needs the
+   * pool for writes.
+   */
+  const { rows } = await getPgPool().query<{
+    username: string | null;
+    avatar_url: string | null;
+    onboarding_completed_at: string | null;
+  }>('select username, avatar_url, onboarding_completed_at from public.profiles where id = $1', [user.id]);
 
-  if (error) {
-    return Response.json({ ok: false, error: error.message }, { status: 500 });
+  const data = rows[0];
+
+  if (!data) {
+    return Response.json({ ok: false, error: 'Profile not found' }, { status: 404 });
   }
 
   return Response.json({
@@ -30,6 +39,13 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
       email: user.email ?? null,
       username: data?.username ?? null,
       avatar: data?.avatar_url ?? null,
+
+      /*
+       * Onboarding state lives with the account. localStorage made it a property
+       * of the browser: incognito, or a second device, re-ran the welcome flow for
+       * a user who had already finished it.
+       */
+      onboardingCompleted: Boolean(data?.onboarding_completed_at),
     },
   });
 }
@@ -37,7 +53,7 @@ export async function loader({ context, request }: LoaderFunctionArgs) {
 export async function action({ context, request }: ActionFunctionArgs) {
   const user = requireApiUser(context);
 
-  let body: { username?: unknown; avatar?: unknown };
+  let body: { username?: unknown; avatar?: unknown; onboardingCompleted?: unknown };
 
   // Clone: React Router consumes the original body before the action runs.
   try {
@@ -72,7 +88,9 @@ export async function action({ context, request }: ActionFunctionArgs) {
     updates.avatar_url = body.avatar || null;
   }
 
-  if (Object.keys(updates).length === 0) {
+  const markOnboarding = body.onboardingCompleted === true;
+
+  if (Object.keys(updates).length === 0 && !markOnboarding) {
     return Response.json({ ok: false, error: 'Nothing to update' }, { status: 400 });
   }
 
@@ -86,9 +104,10 @@ export async function action({ context, request }: ActionFunctionArgs) {
       `update public.profiles
           set username = coalesce($2, username),
               avatar_url = coalesce($3, avatar_url),
+              onboarding_completed_at = case when $4 then now() else onboarding_completed_at end,
               updated_at = now()
         where id = $1`,
-      [user.id, updates.username ?? null, updates.avatar_url ?? null],
+      [user.id, updates.username ?? null, updates.avatar_url ?? null, markOnboarding],
     );
 
     return Response.json({ ok: true });

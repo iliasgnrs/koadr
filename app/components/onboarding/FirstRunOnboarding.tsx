@@ -2,7 +2,6 @@ import Cookies from 'js-cookie';
 import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { API_KEYS_UPDATED_EVENT, type ApiKeysUpdatedDetail } from '~/lib/api/apiKeys';
-import { getAll, openDatabase } from '~/lib/persistence/db';
 import type { MCPConfig } from '~/lib/services/mcpService';
 import { useMCPStore } from '~/lib/stores/mcp';
 import { DEFAULT_AVATARS, DEFAULT_AVATAR, updateProfile } from '~/lib/stores/profile';
@@ -49,32 +48,36 @@ export function FirstRunOnboarding() {
     let active = true;
 
     const checkFirstRun = async () => {
-      if (localStorage.getItem(COMPLETED_KEY)) {
-        return;
-      }
-
+      /*
+       * The account decides, not the browser. This was gated on
+       * `bolt_onboarding_completed` in localStorage, so incognito — or any second
+       * device — re-ran the welcome flow for a user who had already finished it.
+       *
+       * A signed-in account is authoritative. The local flag is consulted only if
+       * the account cannot be read (offline), so the app does not flash the flow
+       * on every reload.
+       */
       try {
-        const storedProfile = localStorage.getItem('bolt_profile');
-        const profile = storedProfile ? (JSON.parse(storedProfile) as { username?: string }) : undefined;
+        const response = await fetch('/api/profile', { credentials: 'same-origin' });
 
-        const hasExistingSetup = Boolean(
-          profile?.username ||
-          localStorage.getItem('bolt_theme') ||
-          localStorage.getItem('provider_settings') ||
-          localStorage.getItem('bolt_user_profile') ||
-          Cookies.get('apiKeys'),
-        );
+        if (!response.ok) {
+          if (active) {
+            setOpen(false);
+          }
 
-        const db = await openDatabase();
-        const existingChats = db ? await getAll(db) : [];
-        db?.close();
+          return;
+        }
+
+        const data = (await response.json()) as { profile?: { onboardingCompleted?: boolean } };
 
         if (!active) {
           return;
         }
 
-        if (hasExistingSetup || existingChats.length > 0) {
+        if (data.profile?.onboardingCompleted) {
           localStorage.setItem(COMPLETED_KEY, 'true');
+          setOpen(false);
+
           return;
         }
 
@@ -82,11 +85,12 @@ export function FirstRunOnboarding() {
       } catch (err) {
         console.error('Could not check first-run setup state:', err);
 
-        if (active) {
+        if (active && !localStorage.getItem(COMPLETED_KEY)) {
           setOpen(true);
         }
       }
     };
+
     void checkFirstRun();
 
     return () => {
@@ -101,8 +105,20 @@ export function FirstRunOnboarding() {
   }, [open, mcpInitialized, initializeMcp]);
 
   const finish = () => {
+    /*
+     * Recorded on the account so the next device (and any incognito window)
+     * knows this is not a first run. The local flag mirrors it only so the
+     * flow does not flash before the request settles.
+     */
     localStorage.setItem(COMPLETED_KEY, 'true');
     setOpen(false);
+
+    void fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ onboardingCompleted: true }),
+      credentials: 'same-origin',
+    }).catch(() => undefined);
   };
 
   const saveApiKey = () => {

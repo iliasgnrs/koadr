@@ -56,6 +56,8 @@ describe('/api/profile', () => {
   });
 
   it('returns the email even when no username was chosen', async () => {
+    pgQuery.mockResolvedValue({ rows: [{ username: null, avatar_url: null, onboarding_completed_at: null }] });
+
     const response = await call(loader, { request: request('GET'), params: {}, context: { user } });
     const json = (await response.json()) as Record<string, any>;
 
@@ -67,16 +69,31 @@ describe('/api/profile', () => {
   });
 
   it('returns the stored username and avatar', async () => {
-    db.maybeSingle.mockResolvedValue({
-      data: { username: 'ilias', avatar_url: 'data:image/png;base64,xx' },
-      error: null,
+    pgQuery.mockResolvedValue({
+      rows: [
+        {
+          username: 'ilias',
+          avatar_url: 'data:image/png;base64,xx',
+          onboarding_completed_at: '2026-11-06T00:00:00Z',
+        },
+      ],
     });
 
     const response = await call(loader, { request: request('GET'), params: {}, context: { user } });
     const json = (await response.json()) as Record<string, any>;
 
     expect(json.profile.username).toBe('ilias');
+    expect(json.profile.onboardingCompleted).toBe(true);
     expect(json.profile.avatar).toBe('data:image/png;base64,xx');
+  });
+
+  it('reports onboarding as not completed for a fresh account', async () => {
+    pgQuery.mockResolvedValue({ rows: [{ username: null, avatar_url: null, onboarding_completed_at: null }] });
+
+    const response = await call(loader, { request: request('GET'), params: {}, context: { user } });
+    const json = (await response.json()) as Record<string, any>;
+
+    expect(json.profile.onboardingCompleted).toBe(false);
   });
 
   it('rejects anonymous writes', async () => {
