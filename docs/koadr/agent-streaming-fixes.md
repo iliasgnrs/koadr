@@ -90,6 +90,20 @@ schema, the identical call was retried on every attempt, and the turn never adva
 bar-delimited — a value that legitimately ends in `<` survives.
 `agent-stream.spec.ts` and `provider-scenarios.spec.ts` cover each shape.
 
+### 5b. A batch of printed calls lost every valid call
+
+**Symptom:** the user sees the full `｜｜DSML｜｜ calls> …` block as chat text, even
+though the patches inside it were perfectly valid.
+
+**Cause:** recovery was all-or-nothing. If *any* block in the batch named a tool that
+does not exist, the whole batch was rejected and the markup flushed to the UI. The same
+happened when a reply contained more blocks than `MAX_RECOVERED_CALLS` (8).
+
+**Fix:** each block is judged on its own — unknown names are skipped, the rest run, and
+a short note says how many were skipped. An over-long reply keeps its first 8 calls
+instead of being discarded whole. The JSON recovery path had the same flaw and is fixed
+the same way ([agent-stream.ts](../../app/lib/.server/llm/agent-stream.ts)).
+
 ## 6. Invented tool names
 
 **Symptom:** `Model tried to call unavailable tool 'project_read_command_output'`.

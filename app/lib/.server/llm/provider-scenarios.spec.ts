@@ -51,6 +51,18 @@ const tools = () => ({
       required: ['command', 'purpose'],
     }),
   }),
+  project_patch_file: tool({
+    inputSchema: jsonSchema({
+      type: 'object',
+      properties: {
+        path: { type: 'string' },
+        oldText: { type: 'string' },
+        newText: { type: 'string' },
+        expectedRevision: { type: 'string' },
+      },
+      required: ['path', 'oldText', 'newText'],
+    }),
+  }),
 });
 
 const run = async (text: string) => {
@@ -126,6 +138,75 @@ describe('provider output scenarios', () => {
 
     expect(calls).toHaveLength(0);
     expect(rendered).not.toMatch(/DSML/);
+  });
+
+  /*
+   * The two-block batch seen live: valid patches solved by a model that printed
+   * them instead of calling them. Recovery must keep both, exactly.
+   */
+  it('recovers a multi-block patch batch with exact arguments', async () => {
+    const block = (name: string, params: Array<[string, string]>) =>
+      `｜｜DSML｜｜ invoke name="${name}">` +
+      params
+        .map(([key, value]) => `｜｜DSML｜｜ parameter name="${key}" string="true">${value}｜｜DSML｜｜ parameter>`)
+        .join('') +
+      '｜｜DSML｜｜ invoke>';
+
+    const { calls } = await run(
+      '｜｜DSML｜｜ calls>' +
+        block('project_patch_file', [
+          ['path', 'src/content/site.ts'],
+          ['oldText', 'export type LegalSection = { heading: string; paragraphs: string[] };'],
+          ['newText', 'export type LegalSection = { heading: string; paragraphs: readonly string[] };'],
+          ['expectedRevision', '527861d06b9a643b9681dfa62f88c771ff0a8fe3a90f410c4d657c101f57bcf4'],
+        ]) +
+        block('project_patch_file', [
+          ['path', 'src/pages/SelfHost.tsx'],
+          [
+            'oldText',
+            "import { CodeBlock } from '../components/CodeBlock';\nimport { CTASection } from '../components/CTASection';",
+          ],
+          ['newText', "import { CodeBlock } from '../components/CodeBlock';"],
+        ]) +
+        '｜｜DSML｜｜ calls>',
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0].input).toEqual({
+      path: 'src/content/site.ts',
+      oldText: 'export type LegalSection = { heading: string; paragraphs: string[] };',
+      newText: 'export type LegalSection = { heading: string; paragraphs: readonly string[] };',
+      expectedRevision: '527861d06b9a643b9681dfa62f88c771ff0a8fe3a90f410c4d657c101f57bcf4',
+    });
+    expect((calls[1].input as Record<string, unknown>).path).toBe('src/pages/SelfHost.tsx');
+    expect((calls[1].input as Record<string, unknown>).oldText).toContain('CTASection');
+  });
+
+  it('keeps the valid calls when one block names an unknown tool', async () => {
+    const { rendered, calls } = await run(
+      '｜｜DSML｜｜ calls>' +
+        '｜｜DSML｜｜ invoke name="project_frobnicate">｜｜DSML｜｜ parameter name="path" string="true">a.ts｜｜DSML｜｜ parameter>｜｜DSML｜｜ invoke>' +
+        '｜｜DSML｜｜ invoke name="project_run_command">｜｜DSML｜｜ parameter name="command" string="true">npm test｜｜DSML｜｜ parameter>｜｜DSML｜｜ parameter name="purpose" string="true">test｜｜DSML｜｜ parameter>｜｜DSML｜｜ invoke>' +
+        '｜｜DSML｜｜ calls>',
+    );
+
+    // One unusable call used to discard its siblings and flush the markup to the user.
+    expect(calls).toHaveLength(1);
+    expect(calls[0].toolName).toBe('project_run_command');
+    expect(rendered).not.toMatch(/DSML/);
+    expect(rendered).toContain('skipped');
+  });
+
+  it('runs the first calls of an over-long batch instead of discarding all of them', async () => {
+    const blocks = Array.from(
+      { length: 9 },
+      (_, index) =>
+        `｜｜DSML｜｜ invoke name="project_get_process_output">｜｜DSML｜｜ parameter name="processId" string="true">p-${index}｜｜DSML｜｜ parameter>｜｜DSML｜｜ invoke>`,
+    ).join('');
+
+    const { calls } = await run(`｜｜DSML｜｜ calls>${blocks}｜｜DSML｜｜ calls>`);
+
+    expect(calls).toHaveLength(8);
   });
 
   it('does not treat prose that mentions a tool as a call', async () => {

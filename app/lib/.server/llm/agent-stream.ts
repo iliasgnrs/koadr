@@ -177,6 +177,22 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
                       providerMetadata: { bolt: { recoveredFromText: true } },
                     });
                   }
+
+                  /*
+                   * Say when part of the batch was unusable. The recovered calls still
+                   * run, so this is a note, not a failure — but silently dropping a
+                   * patch reads as "it changed the file and nothing happened".
+                   */
+                  const droppedBlocks = (text.match(TOOL_MARKUP_BLOCK) ?? []).length - calls.length;
+
+                  if (droppedBlocks > 0 && markupCalls.length) {
+                    controller.enqueue({
+                      type: 'text-delta',
+                      id: generateId(),
+                      delta: `\n\nNote: ${droppedBlocks} printed call(s) named a tool that does not exist and were skipped; the others ran.`,
+                    });
+                  }
+
                   controller.enqueue({
                     ...finish,
                     finishReason: { unified: 'tool-calls', raw: 'recovered-tool-calls' },
@@ -329,11 +345,17 @@ function recoverMarkupToolCalls(
 ): Array<{ name: string; input: Record<string, unknown> }> {
   const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
 
+  /*
+   * One unusable call must not veto its siblings. A batch used to be dropped
+   * whole when any single call named an unknown tool, so a typo in the last of
+   * three patches discarded the two that were fine and flushed the markup to the
+   * user. Each block is judged on its own; unknown names are skipped.
+   */
   for (const block of text.match(TOOL_MARKUP_BLOCK) ?? []) {
     const requested = block.match(/\binvoke\b[^>]*\bname\s*=\s*"([^"]+)"/)?.[1];
 
     if (!requested) {
-      return [];
+      continue;
     }
 
     /*
@@ -344,7 +366,7 @@ function recoverMarkupToolCalls(
     const name = available.has(requested) ? requested : resolveToolAlias(requested, [...available]);
 
     if (!name || !available.has(name)) {
-      return [];
+      continue;
     }
 
     const input: Record<string, unknown> = {};
@@ -362,9 +384,16 @@ function recoverMarkupToolCalls(
     calls.push({ name, input });
   }
 
-  if (!calls.length || calls.length > MAX_RECOVERED_CALLS) {
+  /*
+   * The cap exists so a runaway reply cannot queue hundreds of effects; it is not
+   * a correctness check. Keep what fits instead of discarding the whole batch,
+   * which turned an over-long reply into a wall of raw markup.
+   */
+  if (!calls.length) {
     return [];
   }
+
+  calls.length = Math.min(calls.length, MAX_RECOVERED_CALLS);
 
   if (allowAnyAvailable) {
     return calls;
@@ -434,15 +463,16 @@ function recoverJsonToolCalls(
     const candidates = Array.isArray(parsed) ? parsed : [parsed];
     const available = new Set(tools?.filter((tool) => tool.type === 'function').map((tool) => tool.name));
 
-    if (!candidates.length || candidates.length > MAX_RECOVERED_CALLS) {
+    if (!candidates.length) {
       return [];
     }
 
     const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
 
+    // Same rule as the markup path: a bad entry is skipped, not fatal to its siblings.
     for (const candidate of candidates) {
       if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
-        return [];
+        continue;
       }
 
       const entry = candidate as Record<string, unknown>;
@@ -462,11 +492,17 @@ function recoverJsonToolCalls(
         Array.isArray(input) ||
         Object.keys(entry).some((key) => key !== 'name' && key !== 'parameters')
       ) {
-        return [];
+        continue;
       }
 
       calls.push({ name, input: input as Record<string, unknown> });
     }
+
+    if (!calls.length) {
+      return [];
+    }
+
+    calls.length = Math.min(calls.length, MAX_RECOVERED_CALLS);
 
     if (allowAnyAvailable) {
       return calls;
