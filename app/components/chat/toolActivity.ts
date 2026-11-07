@@ -36,12 +36,12 @@ export function getToolDisplayError(part: unknown): string | undefined {
   const output = getToolOutput(part);
 
   if (output && typeof output === 'object') {
-    if ('reason' in output && typeof output.reason === 'string') {
-      return output.reason;
-    }
+    const fields = output as Record<string, unknown>;
 
-    if ('error' in output && typeof output.error === 'string') {
-      return output.error;
+    for (const key of ['reason', 'error'] as const) {
+      if (typeof fields[key] === 'string') {
+        return summarizeToolFailure(fields[key]);
+      }
     }
 
     if ('exitCode' in output && typeof output.exitCode === 'number') {
@@ -50,8 +50,71 @@ export function getToolDisplayError(part: unknown): string | undefined {
   }
 
   if (part && typeof part === 'object' && 'errorText' in part && typeof part.errorText === 'string') {
-    return part.errorText;
+    return summarizeToolFailure(part.errorText);
   }
 
-  return typeof output === 'string' ? output : 'Tool execution failed.';
+  return typeof output === 'string' ? summarizeToolFailure(output) : 'Tool execution failed.';
+}
+
+/*
+ * Failure kinds the UI names instead of dumping the raw diagnostic.
+ *
+ * The tool output stays untouched: the model still receives the full revision and
+ * file content it needs to repair the patch. Only what the user reads changes.
+ */
+export type ToolFailureKind = 'patch-conflict' | 'patch-needs-read' | 'provider' | 'other';
+
+const FAILURE_HEADLINES: Record<Exclude<ToolFailureKind, 'other'>, string> = {
+  'patch-conflict': 'Found a bug: the file changed since the last read. Fixing…',
+  'patch-needs-read': 'Found a bug: the file was never read. Reading it, then fixing…',
+  provider: 'Found a bug in the provider request. Fixing…',
+};
+
+/**
+ * Longest prefix of a failure message the chat shows. A patch conflict carries the
+ * whole file plus a 64-character revision, which buried every other message in the
+ * transcript.
+ */
+const MAX_DISPLAYED_FAILURE_CHARS = 140;
+
+export function classifyToolFailure(message: string): ToolFailureKind {
+  if (/patch conflict/i.test(message)) {
+    return 'patch-conflict';
+  }
+
+  if (/read the file first/i.test(message)) {
+    return 'patch-needs-read';
+  }
+
+  if (/provider request failed|ai provider|custom error/i.test(message)) {
+    return 'provider';
+  }
+
+  return 'other';
+}
+
+/** Short, human message for the chat. The model still gets the full diagnostic. */
+export function summarizeToolFailure(message: string): string {
+  const kind = classifyToolFailure(message);
+
+  if (kind !== 'other') {
+    return FAILURE_HEADLINES[kind];
+  }
+
+  const firstLine = message.trim().split('\n')[0].trim();
+
+  return firstLine.length > MAX_DISPLAYED_FAILURE_CHARS
+    ? `${firstLine.slice(0, MAX_DISPLAYED_FAILURE_CHARS - 1)}…`
+    : firstLine;
+}
+
+/**
+ * Rewrites the "Custom error: " prefix the provider layer prepends.
+ *
+ * The alert keeps its status code and retryability, so only the sentence the user
+ * reads is replaced. "Request Failed" told a user nothing and read like the chat
+ * itself had broken.
+ */
+export function toChatFailureHeadline(title: string, message: string): string {
+  return message.startsWith('Custom error:') ? `Found a bug: ${message.slice('Custom error:'.length).trim()}` : title;
 }

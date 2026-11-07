@@ -13,6 +13,7 @@ Ollama, LM Studio and more) and run Node.js in the browser through WebContainers
 - **FAQ**: [FAQ.md](FAQ.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Agent streaming notes**: [docs/koadr/agent-streaming-fixes.md](docs/koadr/agent-streaming-fixes.md)
+- **Deploying to the VPS**: [docs/koadr/deploy-vps.md](docs/koadr/deploy-vps.md)
 
 ---
 

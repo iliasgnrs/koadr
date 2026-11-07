@@ -41,6 +41,7 @@
     "dockerbuild": "docker build -t bolt-ai:development -t bolt-ai:latest --target development .",
     "typecheck": "tsc",
     "update:ripgrep-wasm": "node scripts/update-ripgrep-wasm.mjs",
+    "rules:sync": "node scripts/sync-project-rules.mjs",
     "typegen": "wrangler types",
     "preview": "pnpm run build && pnpm run start",
     "prepare": "husky",

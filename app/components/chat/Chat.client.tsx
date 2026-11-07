@@ -7,6 +7,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'react-toastify';
 import { BaseChat } from './BaseChat';
+import { toChatFailureHeadline } from './toolActivity';
 import type { ElementInfo } from '~/components/workbench/Inspector';
 import { API_KEYS_UPDATED_EVENT, type ApiKeysUpdatedDetail } from '~/lib/api/apiKeys';
 import { isServerAgentTool } from '~/lib/common/agentLoop';
@@ -51,7 +52,7 @@ import {
 } from '~/utils/constants';
 import { debounce } from '~/utils/debounce';
 import { cubicEasingFn } from '~/utils/easings';
-import { filesToArtifacts } from '~/utils/fileUtils';
+import { filesToArtifacts, isImageAttachment, isTextAttachment } from '~/utils/fileUtils';
 import { createScopedLogger, renderLogger } from '~/utils/logger';
 import { resolveProjectCallContext } from '~/utils/projectCallContext';
 import { createCommandsMessage, detectProjectCommands } from '~/utils/projectCommands';
@@ -826,7 +827,7 @@ export const ChatImpl = memo(
         // Create API error alert
         setLlmErrorAlert({
           type: 'error',
-          title,
+          title: toChatFailureHeadline(title, errorInfo.message),
           description: errorInfo.message,
           provider: provider.name,
           errorType,
@@ -898,16 +899,16 @@ export const ChatImpl = memo(
 
     /*
      * v5 removed the Attachment type and the experimental_attachments option.
-     * Uploaded files now travel as `file` parts on the message itself, with a
+     * Uploaded images now travel as `file` parts on the message itself, with a
      * complete data URL in `url` because the server calls new URL() on it.
      */
-    const filesToFileParts = async (files: File[]): Promise<AnyPart[]> => {
-      if (files.length === 0) {
+    const filesToFileParts = async (images: File[]): Promise<AnyPart[]> => {
+      if (images.length === 0) {
         return [];
       }
 
       return Promise.all(
-        files.map(
+        images.map(
           (file) =>
             new Promise<AnyPart>((resolve) => {
               const reader = new FileReader();
@@ -925,6 +926,37 @@ export const ChatImpl = memo(
         ),
       );
     };
+
+    /*
+     * Text attachments (e.g. copilot-instructions.md) are inlined into the user
+     * turn instead of being sent as `file` parts: file parts reach the model as
+     * media the providers do not all support, and the model must read the rules
+     * as instructions rather than guess at a binary blob. Images stay file parts.
+     */
+    const textAttachmentsToPrompt = async (texts: File[], prompt: string): Promise<string> => {
+      const documents = await Promise.all(
+        texts.map(async (file) => {
+          const content = await file.text();
+
+          return `<attached_file name="${file.name}" mediaType="${file.type || 'text/plain'}">\n${content}\n</attached_file>`;
+        }),
+      );
+
+      if (documents.length === 0) {
+        return prompt;
+      }
+
+      return `${prompt}\n\n<attached_files>\nTreat these attached documents as binding instructions for your output.\n${documents.join('\n\n')}\n</attached_files>`;
+    };
+
+    /** Images keep their file parts; text documents are inlined into the prompt. */
+    const buildAttachments = async (
+      files: File[],
+      prompt: string,
+    ): Promise<{ text: string; fileParts: AnyPart[] }> => ({
+      text: await textAttachmentsToPrompt(files.filter(isTextAttachment), prompt),
+      fileParts: await filesToFileParts(files.filter(isImageAttachment)),
+    });
 
     const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
       const messageContent = messageInput || input;
@@ -951,6 +983,10 @@ export const ChatImpl = memo(
           : '';
         finalMessageContent = `${messageContent}${visualEditPrompt}${elementInfo}`;
       }
+
+      const attachments = await buildAttachments(uploadedFiles, finalMessageContent);
+
+      finalMessageContent = attachments.text;
 
       runAnimation();
 
@@ -1016,13 +1052,12 @@ export const ChatImpl = memo(
 
         // If autoSelectTemplate is disabled or template selection failed, proceed with normal message
         const userMessageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
-        const fileParts = await filesToFileParts(uploadedFiles);
 
         void sendChatMessage({
           id: `${new Date().getTime()}`,
           role: 'user',
           content: userMessageText,
-          parts: [...createMessageParts(userMessageText, imageDataList), ...fileParts],
+          parts: [...createMessageParts(userMessageText, imageDataList), ...attachments.fileParts],
         } as any);
         setFakeLoading(false);
         setInput('');
@@ -1050,13 +1085,13 @@ export const ChatImpl = memo(
         const userUpdateArtifact = filesToArtifacts(modifiedFiles, `${Date.now()}`);
         const messageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${userUpdateArtifact}${finalMessageContent}`;
 
-        void sendChatMessage((await buildUserMessage(messageText)) as any);
+        void sendChatMessage(buildUserMessage(messageText, attachments.fileParts) as any);
 
         workbenchStore.resetAllFileModifications();
       } else {
         const messageText = `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${finalMessageContent}`;
 
-        void sendChatMessage((await buildUserMessage(messageText)) as any);
+        void sendChatMessage(buildUserMessage(messageText, attachments.fileParts) as any);
       }
 
       setInput('');
@@ -1070,20 +1105,12 @@ export const ChatImpl = memo(
       textareaRef.current?.blur();
     };
 
-    /*
-     * Builds a user message carrying its images and uploads. v5 removed
-     * experimental_attachments, so file parts must be part of the message
-     * itself; omitting them silently dropped every paste and upload, because
-     * the state is cleared right after sending.
-     */
-    const buildUserMessage = async (text: string): Promise<UIMessage> => {
-      const fileParts = await filesToFileParts(uploadedFiles);
-
+    function buildUserMessage(text: string, fileParts: AnyPart[]): UIMessage {
       return {
         ...createMessage({ role: 'user', text }),
         parts: [...createMessageParts(text, imageDataList), ...fileParts],
       } as unknown as UIMessage;
-    };
+    }
 
     /**
      * Handles the change event for the textarea and updates the input state.

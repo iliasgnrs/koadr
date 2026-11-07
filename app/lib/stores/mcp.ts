@@ -16,8 +16,13 @@ type MCPSettings = {
   toolEnabled: Record<string, boolean>;
 };
 
+/*
+ * 12 matches the server's agent ceiling (api.chat.ts caps at 12). The old default
+ * of 5 let a single inspect/edit/run/test/repair cycle exhaust the budget mid-run,
+ * because `agent_plan`, every tool call and every verification step each consume one.
+ */
 const defaultSettings = {
-  maxLLMSteps: 5,
+  maxLLMSteps: 12,
   webSearchEnabled: true,
   connectorEnabled: {
     github: false,

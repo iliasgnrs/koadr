@@ -36,7 +36,7 @@ export default function McpTab() {
 
   const [isSaving, setIsSaving] = useState(false);
   const [mcpConfigText, setMCPConfigText] = useState('');
-  const [maxLLMSteps, setMaxLLMSteps] = useState(1);
+  const [maxLLMSteps, setMaxLLMSteps] = useState(12);
   const [error, setError] = useState<string | null>(null);
   const [isCheckingServers, setIsCheckingServers] = useState(false);
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
@@ -189,7 +189,7 @@ export default function McpTab() {
               type="number"
               placeholder="Maximum number of sequential LLM calls"
               min="1"
-              max="20"
+              max="32"
               value={maxLLMSteps}
               onChange={(e) => handleMaxLLMCallChange(e.target.value)}
               className="w-full px-3 py-2 text-bolt-elements-textPrimary text-sm rounded-lg bg-white dark:bg-bolt-elements-background-depth-4 border border-bolt-elements-borderColor dark:border-bolt-elements-borderColor-dark focus:outline-none focus:ring-2 focus:ring-blue-500"

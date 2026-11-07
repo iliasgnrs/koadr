@@ -20,7 +20,7 @@ import {
   parseBody,
 } from '~/lib/.server/api/schemas';
 import { createAgentLoopTools } from '~/lib/.server/llm/agent-loop';
-import { createAgentStreamRecovery } from '~/lib/.server/llm/agent-stream';
+import { createAgentStreamRecovery, getToolCatalogue } from '~/lib/.server/llm/agent-stream';
 import { MAX_RESPONSE_SEGMENTS, MAX_TOKENS, type FileMap } from '~/lib/.server/llm/constants';
 import { shouldOptimizeRequestContext } from '~/lib/.server/llm/context-optimization';
 import { createSummary } from '~/lib/.server/llm/create-summary';
@@ -392,6 +392,7 @@ async function chatAction({ context, request }: ActionFunctionArgs) {
                 (toolName) => toolName === 'web_search' || toolName === 'web_fetch',
               ),
             }),
+            getToolCatalogue(Object.keys(tools)),
             getAgentLoopInstructions(agentProgress),
           ]
             .filter(Boolean)

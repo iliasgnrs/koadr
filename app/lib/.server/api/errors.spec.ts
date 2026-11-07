@@ -8,7 +8,10 @@ import {
   toSafeStreamErrorMessage,
   toSafeTextStream,
   toTokenLimitError,
+  resolveToolAlias,
+  TOOL_ALIASES,
 } from './errors';
+import { PROJECT_TOOL_NAMES } from '~/lib/runtime/projectMcp.shared';
 
 describe('toMissingCredentialError', () => {
   it('does not serialize provider diagnostics into the 401 response', async () => {
@@ -215,5 +218,49 @@ describe('toTokenLimitError', () => {
     expect(toSafeStreamErrorMessage(make(403))).toContain('refused access');
     expect(toSafeStreamErrorMessage(make(404))).toContain('could not find the selected model');
     expect(toSafeStreamErrorMessage(make(503))).toContain('server errors');
+  });
+});
+
+describe('resolveToolAlias', () => {
+  const available = ['project_get_process_output', 'project_run_command', 'project_patch_file', 'project_list_paths'];
+
+  it('maps the exact name the model invented to the tool it meant', () => {
+    expect(resolveToolAlias('project_read_command_output', available)).toBe('project_get_process_output');
+    expect(resolveToolAlias('project_apply_patch', available)).toBe('project_patch_file');
+  });
+
+  it('leaves a real name untouched', () => {
+    expect(resolveToolAlias('project_run_command', available)).toBe('project_run_command');
+  });
+
+  it('refuses a name that only shares the namespace prefix', () => {
+    /*
+     * `project_query_database` shares `project_` with everything and nothing else
+     * with a real tool; resolving it would run an unrelated effect.
+     */
+    expect(resolveToolAlias('project_query_database', available)).toBeUndefined();
+  });
+});
+
+describe('TOOL_ALIASES contract', () => {
+  /*
+   * An alias is only useful if its target is a tool the model can actually be
+   * offered. Renaming or removing a project tool would otherwise leave a silent
+   * no-op alias that quietly stops recovering the invented name it was added for.
+   */
+  it('only points at names in PROJECT_TOOL_NAMES', () => {
+    const known = new Set<string>(PROJECT_TOOL_NAMES);
+
+    for (const [alias, target] of Object.entries(TOOL_ALIASES)) {
+      expect(known.has(target), `${alias} -> ${target}`).toBe(true);
+    }
+  });
+
+  it('never shadows a real tool name', () => {
+    const known = new Set<string>(PROJECT_TOOL_NAMES);
+
+    for (const alias of Object.keys(TOOL_ALIASES)) {
+      expect(known.has(alias), alias).toBe(false);
+    }
   });
 });

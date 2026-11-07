@@ -219,8 +219,54 @@ function findClosestTool(requested: string, available: string[]): string | undef
     }
   }
 
-  // Require at least the shared namespace token, or any coincidence would suggest.
-  return bestScore >= 2 ? best : undefined;
+  /*
+   * Only act when the guessed name is a real near-miss. Scoring `project_read_command_output`
+   * against `project_get_process_output` gives 4 (project + output + head + tail), while an
+   * unrelated name such as `project_query_database` only reaches 2 through the shared
+   * `project_` prefix. Treating that as a match silently ran the wrong effect.
+   */
+  return best && bestScore >= 4 ? best : undefined;
+}
+
+/**
+ * Known rename of one tool onto another.
+ *
+ * Token overlap alone is too weak to act on: `project_read_command_output` scores
+ * closest to `project_run_command` when the model actually meant
+ * `project_get_process_output`. Acting on a *documented* synonym needs no
+ * distance heuristic, and a wrong guess here cannot pick a surprising tool.
+ */
+export const TOOL_ALIASES: Record<string, string> = {
+  project_read_command_output: 'project_get_process_output',
+  project_read_output: 'project_get_process_output',
+  project_command_output: 'project_get_process_output',
+  project_get_command_output: 'project_get_process_output',
+  project_edit_file: 'project_patch_file',
+  project_update_file: 'project_patch_file',
+  project_apply_patch: 'project_patch_file',
+  project_create_file: 'project_write_file',
+  project_read_project_file: 'project_read_file',
+  project_list_files: 'project_list_paths',
+  project_delete_file: 'project_delete_path',
+};
+
+/**
+ * Resolves a requested name to a real tool: an explicit alias first, then the
+ * closest available name. Returns undefined when nothing is close enough, so an
+ * unknown tool still fails loudly instead of running the wrong effect.
+ */
+export function resolveToolAlias(requested: string, available: string[]): string | undefined {
+  if (available.includes(requested)) {
+    return requested;
+  }
+
+  const alias = TOOL_ALIASES[requested];
+
+  if (alias && available.includes(alias)) {
+    return alias;
+  }
+
+  return findClosestTool(requested, available);
 }
 
 /** Converts a streaming provider error to a client-safe hint without forwarding diagnostics. */

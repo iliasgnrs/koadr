@@ -6,6 +6,7 @@ import {
   type LanguageModel,
   type StreamTextOnErrorRetryCallback,
 } from 'ai';
+import { resolveToolAlias } from '~/lib/.server/api/errors';
 
 const DEFAULT_ATTEMPT_LIMITS = { firstMs: 120_000, idleMs: 120_000, attemptMs: 300_000 };
 const MAX_RECOVERY_ATTEMPTS = 2;
@@ -193,14 +194,32 @@ export function withAgentToolCallRecovery(model: LanguageModel, onRetry: () => v
 
               /*
                * Nothing was recovered. Strip markup before flushing, or the user
-               * sees a tool call that will never execute.
+               * sees a tool call that will never execute. When something was
+               * stripped, say so: an empty turn looks like a hang, and the note
+               * also replaces the retry that used to burn a step on the same
+               * unparseable output.
                */
+              let stripped = false;
+
               for (const part of buffered) {
                 if (part.type === 'text-delta') {
-                  controller.enqueue({ ...part, delta: stripLeftoverToolMarkup(part.delta) });
+                  const delta = stripLeftoverToolMarkup(part.delta);
+
+                  stripped ||= delta !== part.delta;
+                  controller.enqueue({ ...part, delta });
                 } else {
                   controller.enqueue(part);
                 }
+              }
+
+              if (stripped) {
+                controller.enqueue({
+                  type: 'text-delta',
+                  id: generateId(),
+                  delta:
+                    '\n\nI could not run the previous tool call because it was written as text instead of a native call. Tell me to retry and I will use the tools interface.',
+                  providerMetadata: { bolt: { recoveredFromText: false } },
+                });
               }
 
               controller.close();
@@ -268,13 +287,28 @@ const TOOL_MARKUP_BLOCK = new RegExp(
   `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}invoke\\b[^>]*>[\\s\\S]*?(?:<|\/|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}invoke>`,
   'g',
 );
+
+/*
+ * Closing tags come in four shapes: `</x:parameter>`, `</｜｜DSML｜｜ parameter>`,
+ * `<｜｜DSML｜｜ parameter>` (no slash), and `｜｜DSML｜｜ parameter>` (no `<`).
+ *
+ * The old terminator `(?:<|\/|bars)` consumed only one character, so the value
+ * kept the rest: `p-1</｜｜DSML｜｜ parameter>` captured as `p-1<`. That failed the
+ * tool's input schema, the retry re-sent the identical argument, and the turn
+ * looked hung. Group 1 surfaces a bar-delimited close so the value can drop the
+ * stray `<`; a value legitimately ending in `<` (e.g. code) is unaffected because
+ * the group is only set when the parameter closes with bars.
+ */
 const TOOL_MARKUP_PARAMETER = new RegExp(
-  `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter\\b[^>]*\\bname\\s*=\\s*"([^"]+)"[^>]*>([\\s\\S]*?)(?:<|\\/|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter>`,
+  `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter\\b[^>]*\\bname\\s*=\\s*"([^"]+)"[^>]*>` +
+    `([\\s\\S]*?)` +
+    `(?:(?:<\\/|(?=(${TOOL_MARKUP_BARS}))|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter>|(${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}parameter>)`,
   'g',
 );
 
-function coerceMarkupValue(raw: string, isString: boolean): unknown {
-  const value = raw.trim();
+function coerceMarkupValue(raw: string, isString: boolean, barDelimitedClose = false): unknown {
+  const trimmed = raw.trim();
+  const value = barDelimitedClose && trimmed.endsWith('<') ? trimmed.slice(0, -1).trim() : trimmed;
 
   if (isString) {
     return value;
@@ -296,7 +330,18 @@ function recoverMarkupToolCalls(
   const calls: Array<{ name: string; input: Record<string, unknown> }> = [];
 
   for (const block of text.match(TOOL_MARKUP_BLOCK) ?? []) {
-    const name = block.match(/\binvoke\b[^>]*\bname\s*=\s*"([^"]+)"/)?.[1];
+    const requested = block.match(/\binvoke\b[^>]*\bname\s*=\s*"([^"]+)"/)?.[1];
+
+    if (!requested) {
+      return [];
+    }
+
+    /*
+     * A recovered call is the last chance to act on the model's intent, so a known
+     * near-miss (`project_read_command_output`) resolves to the real tool here. The
+     * tool's own input schema still validates the arguments before anything runs.
+     */
+    const name = available.has(requested) ? requested : resolveToolAlias(requested, [...available]);
 
     if (!name || !available.has(name)) {
       return [];
@@ -305,7 +350,13 @@ function recoverMarkupToolCalls(
     const input: Record<string, unknown> = {};
 
     for (const parameter of block.matchAll(TOOL_MARKUP_PARAMETER)) {
-      input[parameter[1]] = coerceMarkupValue(parameter[2], /\bstring\s*=\s*"true"/.test(parameter[0]));
+      const barDelimitedClose = Boolean(parameter[3] ?? parameter[4]);
+
+      input[parameter[1]] = coerceMarkupValue(
+        parameter[2],
+        /\bstring\s*=\s*"true"/.test(parameter[0]),
+        barDelimitedClose,
+      );
     }
 
     calls.push({ name, input });
@@ -331,9 +382,14 @@ function recoverMarkupToolCalls(
  * the markup must not be rendered as prose. Leaving it visible is what made the
  * UI look hung: the user sees a tool call that will never run.
  */
+/*
+ * Two alternatives: an unpaired closer (or a truncated opener) on its own, and a
+ * complete opening tag through its closing tag.
+ */
 const LEFTOVER_MARKUP = new RegExp(
-  `<${TOOL_MARKUP_PREFIX}(?:invoke|parameter)\\b[^>]*>[\\s\\S]*?` +
-    `<\\/${TOOL_MARKUP_PREFIX}(?:invoke|parameter)>|<${TOOL_MARKUP_PREFIX}(?:invoke|parameter)\\b[^>]*>`,
+  `(?:<|${TOOL_MARKUP_BARS_OPT})${TOOL_MARKUP_PREFIX}(?:\\/|${TOOL_MARKUP_BARS_OPT})(?:invoke|parameter)\\b[^>]*>` +
+    `|<${TOOL_MARKUP_PREFIX}(?:invoke|parameter)\\b[^>]*>[\\s\\S]*?` +
+    `<\\/${TOOL_MARKUP_PREFIX}(?:invoke|parameter)>`,
   'g',
 );
 
@@ -390,8 +446,13 @@ function recoverJsonToolCalls(
       }
 
       const entry = candidate as Record<string, unknown>;
-      const name = entry.name;
+      const requested = entry.name;
       const input = entry.parameters;
+
+      const name =
+        typeof requested === 'string' && !available.has(requested)
+          ? resolveToolAlias(requested, [...available])
+          : requested;
 
       if (
         typeof name !== 'string' ||
@@ -600,4 +661,28 @@ export function createAgentStreamRecovery(onRetry: (reason: 'tool-call' | 'provi
       firstError = undefined;
     },
   };
+}
+
+/**
+ * The exact set of tool names offered on this request.
+ *
+ * A live session called `project_read_command_output` — a name that never existed.
+ * The retry hint ("did you mean project_get_process_output?") recovers *after* a
+ * wasted step, and a model that keeps guessing still burns the turn. Listing the
+ * real names costs one short block and removes the guess.
+ */
+export function getToolCatalogue(names: string[]): string {
+  const unique = [...new Set(names)].sort();
+
+  if (unique.length === 0) {
+    return '';
+  }
+
+  return [
+    '<available_tools>',
+    `These are the only tools that exist on this request: ${unique.join(', ')}.`,
+    'Call a tool by one of these exact names. Never construct a tool name from parts, and never print a tool call as text, JSON or provider markup; printed calls do not execute.',
+    'If none of these tools can do what is needed, explain the limitation to the user instead of calling an invented name.',
+    '</available_tools>',
+  ].join('\n');
 }

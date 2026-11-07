@@ -5,6 +5,7 @@ import {
   getAgentLoopProgress,
   isServerAgentTool,
   MAX_AGENT_STEPS,
+  PREVIEW_POLL_LIMIT,
   type AgentPlan,
 } from './agentLoop';
 import type { AnyMessage } from '~/lib/persistence/messageMigration';
@@ -294,5 +295,49 @@ describe('instruction and tool-set agreement', () => {
 
     expect(progress.plan).toBeDefined();
     expect(getAgentLoopInstructions(progress)).toContain('project_patch_file or project_write_file now');
+  });
+});
+
+describe('preview that never becomes ready', () => {
+  const poll = (index: number) =>
+    result(
+      'project_get_process_output',
+      { processId: 'server', status: 'running', previewReady: false, output: 'VITE ready' },
+      `poll-${index}`,
+    );
+
+  it('stays pending while the process is still starting', () => {
+    for (let count = 1; count < PREVIEW_POLL_LIMIT; count++) {
+      const progress = getAgentLoopProgress(
+        [user, response(planned, edited, ...Array.from({ length: count }, (_, i) => poll(i)))],
+        true,
+      );
+      expect(progress.status).toBe('pending');
+      expect(progress.previewStalled).toBe(false);
+    }
+  });
+
+  it('reports limited with an explicit stall after the poll limit', () => {
+    const polls = Array.from({ length: PREVIEW_POLL_LIMIT }, (_, i) => poll(i));
+    const progress = getAgentLoopProgress([user, response(planned, edited, ...polls)], true);
+
+    expect(progress.status).toBe('limited');
+    expect(progress.previewStalled).toBe(true);
+    expect(getAgentLoopInstructions(progress)).toContain('never became ready');
+  });
+
+  it('does not stall when the preview becomes ready', () => {
+    const polls = Array.from({ length: PREVIEW_POLL_LIMIT }, (_, i) => poll(i));
+
+    const ready = result(
+      'project_get_process_output',
+      { processId: 'server', status: 'running', previewReady: true },
+      'ready',
+    );
+
+    const progress = getAgentLoopProgress([user, response(planned, edited, ...polls, ready)], true);
+
+    expect(progress.previewStalled).toBe(false);
+    expect(progress.status).not.toBe('limited');
   });
 });

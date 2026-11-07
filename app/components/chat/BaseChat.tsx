@@ -3,6 +3,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import type { UIMessage } from 'ai';
 import Cookies from 'js-cookie';
 import React, { lazy, Suspense, type RefCallback, useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { ClientOnly } from 'remix-utils/client-only';
 import { getApiKeysFromCookies } from './APIKeyManager';
 import styles from './BaseChat.module.scss';
@@ -36,6 +37,7 @@ import type { DesignScheme } from '~/types/design-scheme';
 import type { ProviderInfo } from '~/types/model';
 import { classNames } from '~/utils/classNames';
 import { PROVIDER_LIST } from '~/utils/constants';
+import { MAX_ATTACHMENT_TEXT_BYTES, isImageAttachment, isTextAttachment } from '~/utils/fileUtils';
 
 const TEXTAREA_MIN_HEIGHT = 76;
 
@@ -322,25 +324,56 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
     const handleFileUpload = () => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'image/*';
+      input.multiple = true;
+      input.accept =
+        'image/*,.md,.markdown,.txt,.json,.js,.jsx,.ts,.tsx,.css,.scss,.html,.yml,.yaml,.toml,.ini,.csv,.sql,.sh,.py,.go,.rs,.java,.xml';
 
       input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
+        const files = Array.from((e.target as HTMLInputElement).files ?? []);
 
-        if (file) {
-          const reader = new FileReader();
-
-          reader.onload = (e) => {
-            const base64Image = e.target?.result as string;
-            setUploadedFiles?.([...uploadedFiles, file]);
-            setImageDataList?.([...imageDataList, base64Image]);
-          };
-          reader.readAsDataURL(file);
-        }
+        await addAttachments(files);
       };
 
       input.click();
     };
+
+    /*
+     * Images need their data URL for the preview strip; text documents (e.g.
+     * copilot-instructions.md) are read when the message is sent, so they only
+     * need to be queued here.
+     */
+    const addAttachments = async (files: File[]) => {
+      const nextFiles = [...uploadedFiles];
+      const nextImageData = [...imageDataList];
+
+      for (const file of files) {
+        const isText = isTextAttachment(file);
+
+        if (!isText && !isImageAttachment(file)) {
+          toast.error(`${file.name}: only images and text files can be attached`);
+          continue;
+        }
+
+        if (isText && file.size > MAX_ATTACHMENT_TEXT_BYTES) {
+          toast.error(`${file.name}: text attachments must be under ${MAX_ATTACHMENT_TEXT_BYTES / 1024}KB`);
+          continue;
+        }
+
+        nextFiles.push(file);
+        nextImageData.push(isText ? '' : await readFileAsDataUrl(file));
+      }
+
+      setUploadedFiles?.(nextFiles);
+      setImageDataList?.(nextImageData);
+    };
+
+    const readFileAsDataUrl = (file: File) =>
+      new Promise<string>((resolve) => {
+        const reader = new FileReader();
+
+        reader.onload = (e) => resolve((e.target?.result as string) ?? '');
+        reader.readAsDataURL(file);
+      });
 
     const handlePaste = async (e: React.ClipboardEvent) => {
       const items = e.clipboardData?.items;
@@ -356,14 +389,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
           const file = item.getAsFile();
 
           if (file) {
-            const reader = new FileReader();
-
-            reader.onload = (e) => {
-              const base64Image = e.target?.result as string;
-              setUploadedFiles?.([...uploadedFiles, file]);
-              setImageDataList?.([...imageDataList, base64Image]);
-            };
-            reader.readAsDataURL(file);
+            await addAttachments([file]);
           }
 
           break;
@@ -484,6 +510,7 @@ export const BaseChat = React.forwardRef<HTMLDivElement, BaseChatProps>(
                   qrModalOpen={qrModalOpen}
                   setQrModalOpen={setQrModalOpen}
                   handleFileUpload={handleFileUpload}
+                  addAttachments={addAttachments}
                   chatMode={chatMode}
                   setChatMode={setChatMode}
                   agentMode={agentMode}

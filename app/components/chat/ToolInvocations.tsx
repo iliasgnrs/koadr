@@ -233,6 +233,21 @@ function activitySummary(parts: AnyPart[]): string {
     .filter(Boolean)
     .join(', ');
 
+  /*
+   * A collapsed group is closed by default, so this line is often the only thing
+   * the user sees of a failed step. Say a fix is underway instead of leaving a bare
+   * "8 activities".
+   */
+  const failures = parts.filter((part) => getToolDisplayState(part) === 'output-error').length;
+
+  if (failures > 0) {
+    const kind = parts
+      .map((part) => (getToolDisplayState(part) === 'output-error' ? getToolDisplayError(part) : undefined))
+      .find(Boolean);
+
+    return kind ? kind : `Found a bug: ${failures} step${failures === 1 ? '' : 's'} failed. Fixing…`;
+  }
+
   return exploration ? `Explored ${exploration}` : `${names.length} activity ${names.length === 1 ? 'item' : 'items'}`;
 }
 

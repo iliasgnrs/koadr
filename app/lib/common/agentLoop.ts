@@ -11,6 +11,13 @@ import {
 
 export const MAX_AGENT_STEPS = 32;
 
+/**
+ * How many times the model may poll a running process that never becomes ready.
+ * One poll per attempt is plenty for an install; a dev server that is still not
+ * ready after this many confirms is stuck, and polling further only burns steps.
+ */
+export const PREVIEW_POLL_LIMIT = 4;
+
 /** These tools execute on the server and must never receive a client approval result. */
 export function isServerAgentTool(name: string | undefined): boolean {
   return name === 'agent_plan' || name === 'agent_complete';
@@ -70,6 +77,14 @@ export function getAgentLoopProgress(messages: AnyMessage[], enabled: boolean) {
   let steps = 0;
   let position = 0;
 
+  /*
+   * A dev server that keeps reporting `running` without ever making the preview
+   * ready is the one failure the completion gate cannot see: nothing failed, so
+   * the model polls forever and the turn looks hung. Count *distinct* polls of a
+   * running process rather than every tool call.
+   */
+  let previewPollAttempts = 0;
+
   const evidence: string[] = [];
   const starts = new Map<string, number>();
 
@@ -121,6 +136,10 @@ export function getAgentLoopProgress(messages: AnyMessage[], enabled: boolean) {
 
       if (commandResult && typeof output.previewReady === 'boolean') {
         previewReady = output.previewReady;
+
+        if (name === 'project_get_process_output' && output.previewReady === false && output.status === 'running') {
+          previewPollAttempts++;
+        }
       }
 
       if (name === 'project_stop_process' && output.stopped === true && output.purpose === 'run') {
@@ -196,6 +215,7 @@ export function getAgentLoopProgress(messages: AnyMessage[], enabled: boolean) {
   }
 
   const tested = lastPassingTest > lastEdit && lastPassingTest > lastFailure && lastPassingTest >= 0;
+  const previewStalled = !previewReady && previewPollAttempts >= PREVIEW_POLL_LIMIT;
   const active = enabled && userIndex >= 0 && !informational;
   const ran = (lastRun > lastEdit && lastRun >= 0) || previewReady;
 
@@ -214,7 +234,7 @@ export function getAgentLoopProgress(messages: AnyMessage[], enabled: boolean) {
       ? 'blocked'
       : completed
         ? 'ready'
-        : steps >= MAX_AGENT_STEPS
+        : steps >= MAX_AGENT_STEPS || previewStalled
           ? 'limited'
           : 'pending';
 
@@ -227,6 +247,7 @@ export function getAgentLoopProgress(messages: AnyMessage[], enabled: boolean) {
     previewReady,
     tested,
     steps,
+    previewStalled,
     evidence,
     pendingProjectCalls,
   };
@@ -280,7 +301,9 @@ export function getAgentLoopInstructions(progress: ReturnType<typeof getAgentLoo
   }
 
   if (progress.status === 'limited') {
-    return `The ${MAX_AGENT_STEPS}-step task limit was reached. Stop using tools and report actual progress, unmet completion criteria, and checks that did not pass.`;
+    return progress.previewStalled
+      ? `The preview never became ready after ${PREVIEW_POLL_LIMIT} polls of the running process. Stop polling. Report the command output you have, state that the preview did not start, and name the likely cause (build error, missing dependency, or wrong start command) without claiming success.`
+      : `The ${MAX_AGENT_STEPS}-step task limit was reached. Stop using tools and report actual progress, unmet completion criteria, and checks that did not pass.`;
   }
 
   if (progress.status === 'ready') {
@@ -298,7 +321,7 @@ export function getAgentLoopInstructions(progress: ReturnType<typeof getAgentLoo
           : !progress.tested
             ? 'Run the smallest relevant check now with project_run_command and purpose="test". Wait for exit code 0; repair failures before continuing.'
             : progress.plan?.requiresPreview && !progress.previewReady
-              ? 'Start or inspect the app preview now. Confirm it is running before completing.'
+              ? 'Start or inspect the app preview now with project_get_process_output. If the process output already shows a build error or a crash, fix that cause and restart it; do not poll the same unchanged output again.'
               : 'Call agent_complete alone and report every recorded criterion by its exact ID. The server attaches evidence from successful project tool calls automatically; do not provide process IDs, command names, or guessed evidence IDs.';
 
   return `Follow Plan -> edit -> run -> test -> repair. Record a short plan and observable completion criteria with agent_plan. Inspect relevant files, then use small exact patches. Run the app/program with purpose run; use an existing live server for follow-up UI edits. Run the smallest relevant available checks with purpose test and wait for exit code 0. If a check fails, inspect its output, patch the cause, and rerun the check. Any edit after a passing check requires fresh verification. Call agent_complete alone and report each planned criterion by its exact ID; the server attaches evidence from successful project tool calls automatically. A plan or started process alone is not completion. If no automated test script exists, use an available typecheck, lint, focused runtime assertion, or smoke check and explain its limits; do not invent passing tests. If work cannot proceed, report outcome blocked with a concrete reason.

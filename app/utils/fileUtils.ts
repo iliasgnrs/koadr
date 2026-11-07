@@ -42,6 +42,58 @@ export const shouldIncludeFile = (path: string): boolean => {
   return !ig.ignores(path);
 };
 
+/*
+ * Only images and plain text can travel as message file parts: providers either
+ * reject other media types or the byte cost dwarfs the value. Anything else is
+ * refused at pick time rather than failing the whole request later.
+ */
+export const MAX_ATTACHMENT_TEXT_BYTES = 512 * 1024;
+
+const TEXT_ATTACHMENT_TYPES = ['application/json', 'application/xml', 'image/svg+xml'];
+
+const TEXT_ATTACHMENT_EXTENSIONS = [
+  'md',
+  'markdown',
+  'txt',
+  'json',
+  'js',
+  'jsx',
+  'ts',
+  'tsx',
+  'css',
+  'scss',
+  'html',
+  'yml',
+  'yaml',
+  'toml',
+  'ini',
+  'csv',
+  'sql',
+  'sh',
+  'py',
+  'go',
+  'rs',
+  'java',
+  'xml',
+];
+
+export const isImageAttachment = (file: File): boolean =>
+  file.type.startsWith('image/') && file.type !== 'image/svg+xml';
+
+export const isTextAttachment = (file: File): boolean => {
+  if (TEXT_ATTACHMENT_TYPES.includes(file.type)) {
+    return true;
+  }
+
+  if (file.type.startsWith('text/')) {
+    return true;
+  }
+
+  const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
+
+  return TEXT_ATTACHMENT_EXTENSIONS.includes(extension);
+};
+
 const readPackageJson = async (files: File[]): Promise<{ scripts?: Record<string, string> } | null> => {
   const packageJsonFile = files.find((f) => f.webkitRelativePath.endsWith('package.json'));
 

@@ -55,6 +55,9 @@ interface ChatBoxProps {
   qrModalOpen: boolean;
   setQrModalOpen: (open: boolean) => void;
   handleFileUpload: () => void;
+
+  /** Queues images and text documents (e.g. a dropped .md) for the next message. */
+  addAttachments?: (files: File[]) => Promise<void>;
   setProvider?: ((provider: ProviderInfo) => void) | undefined;
   model?: string | undefined;
   setModel?: ((model: string) => void) | undefined;
@@ -285,19 +288,7 @@ export const ChatBox: React.FC<ChatBoxProps> = (props) => {
             e.preventDefault();
             e.currentTarget.style.border = '1px solid var(--bolt-elements-borderColor)';
 
-            const files = Array.from(e.dataTransfer.files);
-            files.forEach((file) => {
-              if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
-
-                reader.onload = (e) => {
-                  const base64Image = e.target?.result as string;
-                  props.setUploadedFiles?.([...props.uploadedFiles, file]);
-                  props.setImageDataList?.([...props.imageDataList, base64Image]);
-                };
-                reader.readAsDataURL(file);
-              }
-            });
+            void props.addAttachments?.(Array.from(e.dataTransfer.files));
           }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {

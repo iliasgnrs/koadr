@@ -59,6 +59,7 @@ export function withDevelopmentCommentaryWorkstyle(systemPrompt: string): string
     - Prefer one install command per run and avoid repeated reinstall loops.
   - Inspect project files with project_list_paths, project_search_content, and project_read_file before editing.
   - Never put file contents, patches, or commands inside progress updates.
+  - Emit tool calls only through the native tool interface. Never write a call as text, JSON, XML, or provider markup such as DSML, antml, or functions tags; printed calls do not execute and end the turn.
 </workstyle>
 `;
   }

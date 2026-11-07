@@ -11,7 +11,12 @@ import {
 } from 'ai';
 import { MockLanguageModelV4 } from 'ai/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgentStreamRecovery, withAgentStreamDeadlines, withAgentToolCallRecovery } from './agent-stream';
+import {
+  createAgentStreamRecovery,
+  getToolCatalogue,
+  withAgentStreamDeadlines,
+  withAgentToolCallRecovery,
+} from './agent-stream';
 import { toSafeStreamErrorMessage } from '~/lib/.server/api/errors';
 
 const usage = {
@@ -577,12 +582,43 @@ describe('tool markup recovery', () => {
      */
     '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke name="project_get_process_output">\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter name="processId" string="true">p-1\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter>\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke>',
   ])('recovers a tool call printed as provider markup', async (markup) => {
+    await expectRecoveredProcessId(markup, 'p-1');
+  });
+
+  /*
+   * The live hang: a wrapped, multi-line full-width block whose parameter closes
+   * with `</｜｜DSML｜｜ parameter>`. The old terminator captured the `<` as part of
+   * the value (`p-1<`), the tool input failed validation, and the retry re-sent
+   * the same argument forever — the user sees "Command is still running" and no
+   * progress. A recovered call must carry the exact value.
+   */
+  it.each([
+    [
+      'multi-line block',
+      '\uFF5C\uFF5CDSML\uFF5C\uFF5C calls>\n' +
+        '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke name="project_get_process_output">\n' +
+        '\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter name="processId" string="true">25b02b92\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter>\n' +
+        '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke>',
+    ],
+    [
+      'angle-bracket close on full-width bars',
+      '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke name="project_get_process_output">\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter name="processId" string="true">25b02b92</\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter>\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke>',
+    ],
+    [
+      'closing tag without the bar prefix',
+      '\uFF5C\uFF5CDSML\uFF5C\uFF5C invoke name="project_get_process_output">\uFF5C\uFF5CDSML\uFF5C\uFF5C parameter name="processId" string="true">25b02b92</parameter></invoke>',
+    ],
+  ])('keeps the parameter value exact for %s', async (_name, markup) => {
+    await expectRecoveredProcessId(markup, '25b02b92');
+  });
+
+  async function expectRecoveredProcessId(markup: string, expected: string) {
     const result = await streamText({
       model: withAgentToolCallRecovery(withAgentStreamDeadlines(markupReply(markup)), vi.fn()),
       prompt: 'Poll the running command.',
       toolChoice: 'auto',
       tools: tools(),
-      stopWhen: isStepCount(2),
+      stopWhen: isStepCount(1),
     });
 
     const chunks = await collect(result);
@@ -591,10 +627,100 @@ describe('tool markup recovery', () => {
         expect.objectContaining({ type: 'tool-input-available', toolName: 'project_get_process_output' }),
       ]),
     );
+    expect(JSON.stringify(chunks)).toContain(`"processId":"${expected}"`);
 
     // The raw markup must not reach the UI; only the recovered call and any prose may.
+    expect(JSON.stringify(chunks)).not.toMatch(/DSML|antml:invoke|antml:parameter/);
+  }
+});
+
+describe('invented tool names', () => {
+  const tools = () => ({
+    project_get_process_output: tool({
+      inputSchema: jsonSchema({
+        type: 'object',
+        properties: { processId: { type: 'string' } },
+        required: ['processId'],
+        additionalProperties: false,
+      }),
+    }),
+    project_run_command: tool({
+      inputSchema: jsonSchema({ type: 'object', properties: { command: { type: 'string' } } }),
+    }),
+  });
+
+  const markupReply = (markup: string) =>
+    new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: new ReadableStream({
+          start(controller) {
+            controller.enqueue({ type: 'stream-start', warnings: [] });
+            controller.enqueue({ type: 'text-start', id: 't' });
+            controller.enqueue({ type: 'text-delta', id: 't', delta: markup });
+            controller.enqueue({ type: 'text-end', id: 't' });
+            finish(controller);
+          },
+        }),
+      }),
+    });
+
+  it('resolves a known near-miss to the real tool instead of failing the turn', async () => {
+    const result = await streamText({
+      model: withAgentToolCallRecovery(
+        withAgentStreamDeadlines(
+          markupReply(
+            '<||DSML|| invoke name="project_read_command_output"><||DSML|| parameter name="processId" string="true">p-1<||DSML|| parameter></||DSML|| invoke>',
+          ),
+        ),
+        vi.fn(),
+      ),
+      prompt: 'Poll the running command.',
+      toolChoice: 'auto',
+      tools: tools(),
+      stopWhen: isStepCount(1),
+    });
+
+    const chunks = await collect(result);
+    expect(JSON.stringify(chunks)).toContain('"toolName":"project_get_process_output"');
+    expect(JSON.stringify(chunks)).toContain('"processId":"p-1"');
+  });
+
+  it('tells the user when printed markup could not be recovered', async () => {
+    const result = await streamText({
+      model: withAgentToolCallRecovery(
+        withAgentStreamDeadlines(
+          markupReply(
+            'Let me check.\n<||DSML|| invoke name="project_query_database"><||DSML|| parameter name="id" string="true">1<||DSML|| parameter></||DSML|| invoke>',
+          ),
+        ),
+        vi.fn(),
+      ),
+      prompt: 'Poll the running command.',
+      toolChoice: 'auto',
+      tools: tools(),
+      stopWhen: isStepCount(1),
+    });
+
+    const chunks = await collect(result);
     const rendered = JSON.stringify(chunks);
-    expect(rendered).not.toMatch(/DSML|antml:invoke|antml:parameter/);
+
+    expect(rendered).not.toMatch(/DSML|invoke/);
+    expect(rendered).toContain('native call');
+  });
+});
+
+describe('getToolCatalogue', () => {
+  it('lists names once, sorted, and forbids inventing new ones', () => {
+    const catalogue = getToolCatalogue(['project_run_command', 'agent_plan', 'project_run_command']);
+
+    expect(catalogue).toContain('<available_tools>');
+    expect(catalogue).toContain('agent_plan, project_run_command');
+    expect(catalogue.match(/project_run_command/g)).toHaveLength(1);
+    expect(catalogue).toContain('Never construct a tool name');
+  });
+
+  it('adds nothing when no tools are offered', () => {
+    expect(getToolCatalogue([])).toBe('');
   });
 });
 

@@ -6,6 +6,7 @@ import { withDevelopmentCommentaryWorkstyle } from './prompt-workstyle';
 import { createFilesContext, extractPropertiesFromMessage } from './utils';
 import { PromptLibrary } from '~/lib/common/prompt-library';
 import { discussPrompt } from '~/lib/common/prompts/discuss-prompt';
+import { withProjectRules } from '~/lib/common/prompts/projectRules';
 import { getSystemPrompt } from '~/lib/common/prompts/prompts';
 import { LLMManager } from '~/lib/modules/llm/manager';
 import { createMessage, getMessageText } from '~/lib/persistence/messageMigration';
@@ -315,6 +316,9 @@ export async function streamText(props: {
 
   logger.info(`Sending llm call to ${provider.name} with model ${modelDetails.name}`);
 
+  // Every chat carries the workspace rulebook (app/lib/common/prompts/project-rules.md).
+  systemPrompt = withProjectRules(systemPrompt);
+
   // Log reasoning model detection and token parameters
   const isReasoning = isReasoningModel(modelDetails.name);
   logger.info(
@@ -401,7 +405,7 @@ export async function streamText(props: {
     forwardedOptions.streamRetries !== undefined ? withAgentStreamDeadlines(selectedModel) : selectedModel;
   const streamParams = {
     model: onToolCallRetry ? withAgentToolCallRecovery(boundedModel, onToolCallRetry) : boundedModel,
-    system: [chatMode === 'build' ? systemPrompt : discussPrompt(), additionalSystemInstructions]
+    system: [chatMode === 'build' ? systemPrompt : withProjectRules(discussPrompt()), additionalSystemInstructions]
       .filter((instruction): instruction is string => typeof instruction === 'string' && instruction.length > 0)
       .join('\n\n'),
     ...tokenParams,
