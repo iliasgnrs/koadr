@@ -82,22 +82,17 @@ const inlineThemeCode = stripIndents`
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const theme = useStore(themeStore);
+  const mode = getThemeMode(theme);
+  const colorTheme = getColorTheme(theme);
 
   useEffect(() => {
-    const mode = theme === 'dark' || theme.startsWith('dark-') ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', mode);
-    document.documentElement.setAttribute('data-color-theme', theme === 'dark' ? 'dark-dracula' : theme);
-  }, [theme]);
+    document.documentElement.setAttribute('data-color-theme', colorTheme);
+  }, [mode, colorTheme]);
 
   // The theme script applies saved browser preferences before hydration.
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      data-theme={theme === 'dark' || theme.startsWith('dark-') ? 'dark' : 'light'}
-      data-color-theme={theme === 'dark' ? 'dark-dracula' : theme}
-      className="w-full h-full"
-    >
+    <html lang="en" suppressHydrationWarning data-theme={mode} data-color-theme={colorTheme} className="w-full h-full">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -152,6 +147,7 @@ import { prebootWebContainer } from './lib/performance/webcontainer-optimizer';
 import { logStore } from './lib/stores/logs';
 import { DEFAULT_THEME, themeStore } from './lib/stores/theme';
 import globalStyles from './styles/index.scss?url';
+import { getColorTheme, getThemeMode } from './types/theme';
 import { stripIndents } from './utils/stripIndent';
 
 export default function App() {

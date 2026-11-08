@@ -1,7 +1,7 @@
 import { atom } from 'nanostores';
 import { logStore } from './logs';
 import { queueSettingsSync } from '~/lib/settings-client';
-import { getThemeMode, THEMES, type Theme } from '~/types/theme';
+import { getColorTheme, getThemeMode, THEMES, type Theme } from '~/types/theme';
 
 export type { Theme } from '~/types/theme';
 
@@ -40,7 +40,7 @@ export function toggleTheme() {
     isTheme(savedTheme) && getThemeMode(savedTheme) === targetMode
       ? savedTheme
       : targetMode === 'dark'
-        ? 'dark-dracula'
+        ? DEFAULT_THEME
         : 'light';
 
   setTheme(newTheme);
@@ -57,7 +57,7 @@ export function setTheme(newTheme: Theme | 'dark') {
   // Update the HTML attribute
   const root = document.querySelector('html');
   root?.setAttribute('data-theme', getThemeMode(newTheme));
-  root?.setAttribute('data-color-theme', newTheme === 'dark' ? 'dark-dracula' : newTheme);
+  root?.setAttribute('data-color-theme', getColorTheme(newTheme));
 
   // Mirror the choice to the account when signed in (debounced, best-effort).
   queueSettingsSync();

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import type { MetaFunction } from 'react-router';
-import { AuthField, AuthLayout, AuthMessage, useAuthSubmit } from '~/components/auth/AuthLayout';
+import { AuthField, AuthLayout, AuthMessage, AuthSubmitButton, useAuthSubmit } from '~/components/auth/AuthLayout';
 
 export const meta: MetaFunction = () => [{ title: 'Reset password — Koadr' }];
 
@@ -25,7 +25,10 @@ export default function ForgotPasswordRoute() {
       title="Reset your password"
       subtitle="We'll email you a link to choose a new one."
       footer={
-        <Link to="/login" className="text-accent-500 hover:underline">
+        <Link
+          to="/login"
+          className="rounded-sm font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-accent-300"
+        >
           Back to sign in
         </Link>
       }
@@ -38,13 +41,9 @@ export default function ForgotPasswordRoute() {
         <form onSubmit={handleSubmit}>
           <AuthMessage error={error} />
           <AuthField label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" />
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-md bg-accent-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
-            {pending ? 'Sending…' : 'Send reset link'}
-          </button>
+          <AuthSubmitButton pending={pending} pendingLabel="Sending…">
+            Send reset link
+          </AuthSubmitButton>
         </form>
       )}
     </AuthLayout>

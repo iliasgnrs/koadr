@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLoaderData } from 'react-router';
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
-import { AuthField, AuthLayout, AuthMessage, useAuthSubmit } from '~/components/auth/AuthLayout';
+import { AuthField, AuthLayout, AuthMessage, AuthSubmitButton, useAuthSubmit } from '~/components/auth/AuthLayout';
 import { getUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => [{ title: 'Choose a new password — Koadr' }];
@@ -40,7 +40,10 @@ export default function ResetPasswordRoute() {
   if (!signedIn) {
     return (
       <AuthLayout title="Link expired" subtitle="Reset links can only be used once.">
-        <Link to="/forgot-password" className="text-accent-500 hover:underline">
+        <Link
+          to="/forgot-password"
+          className="rounded-sm font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-accent-300"
+        >
           Request a new link
         </Link>
       </AuthLayout>
@@ -52,7 +55,10 @@ export default function ResetPasswordRoute() {
       {done ? (
         <p className="text-sm text-bolt-elements-textSecondary">
           Password updated.{' '}
-          <Link to="/" className="text-accent-500 hover:underline">
+          <Link
+            to="/"
+            className="rounded-sm font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-accent-300"
+          >
             Continue to Koadr
           </Link>
         </p>
@@ -73,13 +79,9 @@ export default function ResetPasswordRoute() {
             onChange={setConfirm}
             autoComplete="new-password"
           />
-          <button
-            type="submit"
-            disabled={pending}
-            className="w-full rounded-md bg-accent-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-          >
-            {pending ? 'Updating…' : 'Update password'}
-          </button>
+          <AuthSubmitButton pending={pending} pendingLabel="Updating…">
+            Update password
+          </AuthSubmitButton>
         </form>
       )}
     </AuthLayout>

@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
+import { AuthParticles } from './AuthParticles';
 
 /*
  * Shared shell for the auth pages.
@@ -20,13 +21,15 @@ export function AuthLayout({
   footer?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-full w-full items-center justify-center bg-bolt-elements-background-depth-1 p-4">
-      <div className="w-full max-w-sm">
-        <Link to="/login" className="mb-8 flex justify-center" aria-label="Koadr">
-          <img src="/logo-light-styled.png" alt="Koadr" className="w-[110px] dark:hidden" />
-          <img src="/logo-dark-styled.png" alt="Koadr" className="hidden w-[110px] dark:block" />
+    <div className="relative flex min-h-full w-full items-center justify-center bg-bolt-elements-background-depth-1 p-4">
+      <AuthParticles />
+      <div className="relative z-10 w-full max-w-sm">
+        <Link to="/login" className="mb-8 flex flex-col items-center gap-3" aria-label="Koadr home">
+          {/* The source art is 5:1, so the height is set to keep the wordmark crisp at this size. */}
+          <img src="/logo-light-styled.png" alt="Koadr" className="h-9 w-auto dark:hidden" />
+          <img src="/logo-dark-styled.png" alt="Koadr" className="hidden h-9 w-auto dark:block" />
         </Link>
-        <div className="rounded-lg border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2 p-6">
+        <div className="rounded-xl border border-bolt-elements-borderColor bg-bolt-elements-background-depth-2/80 p-6 shadow-2xl backdrop-blur-xl">
           <h1 className="text-lg font-semibold text-bolt-elements-textPrimary">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-bolt-elements-textSecondary">{subtitle}</p>}
           <div className="mt-5">{children}</div>
@@ -34,6 +37,43 @@ export function AuthLayout({
         {footer && <div className="mt-4 text-center text-sm text-bolt-elements-textSecondary">{footer}</div>}
       </div>
     </div>
+  );
+}
+
+/** Text-style secondary action: no UA button chrome, normalised colour and focus ring. */
+export function AuthTextButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-sm bg-transparent p-0 font-inherit text-bolt-elements-textSecondary transition-colors hover:text-bolt-elements-textPrimary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+    >
+      {children}
+    </button>
+  );
+}
+
+/*
+ * White on Koadr orange is only 2.9:1, so accent CTAs use the near-black brand
+ * ink instead (5.4–6.1:1 across the whole accent-intensity range).
+ */
+export function AuthSubmitButton({
+  pending,
+  pendingLabel,
+  children,
+}: {
+  pending: boolean;
+  pendingLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="mt-2 w-full rounded-md bg-accent-500 px-3 py-2 text-sm font-semibold text-[#1A1A1A] transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-300 focus-visible:ring-offset-2 focus-visible:ring-offset-bolt-elements-background-depth-2 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {pending ? pendingLabel : children}
+    </button>
   );
 }
 
@@ -54,14 +94,14 @@ export function AuthField({
 }) {
   return (
     <label className="mb-3 block">
-      <span className="mb-1 block text-sm text-bolt-elements-textSecondary">{label}</span>
+      <span className="mb-1 block text-sm font-medium text-bolt-elements-textSecondary">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         autoComplete={autoComplete}
         required={required}
-        className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-sm text-bolt-elements-textPrimary outline-none focus:ring-2 focus:ring-bolt-elements-focus"
+        className="w-full rounded-md border border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 px-3 py-2 text-sm text-bolt-elements-textPrimary outline-none transition placeholder:text-bolt-elements-textTertiary focus:border-accent-500 focus:ring-2 focus:ring-accent-500/40"
       />
     </label>
   );
@@ -70,7 +110,10 @@ export function AuthField({
 export function AuthMessage({ error, notice }: { error?: string; notice?: string }) {
   if (error) {
     return (
-      <p role="alert" className="mb-3 rounded-md bg-bolt-elements-icon-errorBackground px-3 py-2 text-sm text-red-500">
+      <p
+        role="alert"
+        className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500 dark:text-red-300"
+      >
         {error}
       </p>
     );
@@ -78,7 +121,7 @@ export function AuthMessage({ error, notice }: { error?: string; notice?: string
 
   if (notice) {
     return (
-      <p className="mb-3 rounded-md bg-bolt-elements-background-depth-3 px-3 py-2 text-sm text-bolt-elements-textSecondary">
+      <p className="mb-3 rounded-md border border-accent-500/30 bg-accent-500/10 px-3 py-2 text-sm text-bolt-elements-textSecondary">
         {notice}
       </p>
     );

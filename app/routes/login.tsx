@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { Link, Navigate, useLoaderData, useSearchParams } from 'react-router';
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
-import { AuthField, AuthLayout, AuthMessage, useAuthSubmit } from '~/components/auth/AuthLayout';
+import {
+  AuthField,
+  AuthLayout,
+  AuthMessage,
+  AuthSubmitButton,
+  AuthTextButton,
+  useAuthSubmit,
+} from '~/components/auth/AuthLayout';
 import { getUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => [{ title: 'Sign in — Koadr' }];
@@ -58,7 +65,10 @@ export default function LoginRoute() {
       footer={
         <>
           No account?{' '}
-          <Link to="/signup" className="text-accent-500 hover:underline">
+          <Link
+            to="/signup"
+            className="rounded-sm font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-accent-300"
+          >
             Create one
           </Link>
         </>
@@ -74,20 +84,17 @@ export default function LoginRoute() {
           onChange={setPassword}
           autoComplete="current-password"
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="mt-2 w-full rounded-md bg-accent-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {pending ? 'Signing in…' : 'Sign in'}
-        </button>
+        <AuthSubmitButton pending={pending} pendingLabel="Signing in…">
+          Sign in
+        </AuthSubmitButton>
       </form>
 
       <div className="mt-4 flex items-center justify-between text-sm">
-        <button type="button" onClick={handleMagicLink} className="text-bolt-elements-textSecondary hover:underline">
-          Email me a magic link
-        </button>
-        <Link to="/forgot-password" className="text-bolt-elements-textSecondary hover:underline">
+        <AuthTextButton onClick={handleMagicLink}>Email me a magic link</AuthTextButton>
+        <Link
+          to="/forgot-password"
+          className="rounded-sm text-bolt-elements-textSecondary transition-colors hover:text-bolt-elements-textPrimary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+        >
           Forgot password?
         </Link>
       </div>

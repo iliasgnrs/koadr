@@ -23,12 +23,19 @@ samp,
   font-family: 'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
 }
 
+/*
+ * The accent-intensity slider shifts accent backgrounds between the brand orange
+ * (0%) and its deeper shade (100%). It used to mix the background toward
+ * transparent, which dropped every white-on-accent CTA below AA contrast once
+ * the user picked anything under 100% — and it mixed the *palette* accent, so a
+ * non-orange theme repainted the Koadr brand entirely.
+ */
 html[data-accent-intensity] .bg-accent-500 {
   background-color: color-mix(
     in srgb,
-    var(--bolt-elements-button-primary-text) var(--interface-accent-strength),
-    transparent
-  ) !important;
+    theme('colors.accent.600') var(--interface-accent-strength, 0%),
+    theme('colors.accent.500')
+  );
 }
 
 html[data-corner-radius='sharp'] [class*='rounded-']:not([class*='rounded-full']),

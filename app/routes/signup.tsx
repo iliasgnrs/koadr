@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useLoaderData, useSearchParams } from 'react-router';
 import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
 import { safeReturnTo } from './login';
-import { AuthField, AuthLayout, AuthMessage, useAuthSubmit } from '~/components/auth/AuthLayout';
+import { AuthField, AuthLayout, AuthMessage, AuthSubmitButton, useAuthSubmit } from '~/components/auth/AuthLayout';
 import { getUser } from '~/lib/auth-guard';
 
 export const meta: MetaFunction = () => [{ title: 'Create account — Koadr' }];
@@ -54,7 +54,10 @@ export default function SignupRoute() {
       footer={
         <>
           Already have one?{' '}
-          <Link to="/login" className="text-accent-500 hover:underline">
+          <Link
+            to="/login"
+            className="rounded-sm font-medium text-accent-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 dark:text-accent-300"
+          >
             Sign in
           </Link>
         </>
@@ -78,13 +81,9 @@ export default function SignupRoute() {
           autoComplete="new-password"
         />
         <p className="mb-3 text-xs text-bolt-elements-textTertiary">At least 8 characters.</p>
-        <button
-          type="submit"
-          disabled={pending}
-          className="w-full rounded-md bg-accent-500 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-        >
-          {pending ? 'Creating account…' : 'Create account'}
-        </button>
+        <AuthSubmitButton pending={pending} pendingLabel="Creating account…">
+          Create account
+        </AuthSubmitButton>
       </form>
     </AuthLayout>
   );

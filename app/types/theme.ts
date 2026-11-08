@@ -42,3 +42,14 @@ export type ThemeMode = 'light' | 'dark';
 export function getThemeMode(theme: Theme | string): ThemeMode {
   return theme.startsWith('dark-') || theme === 'dark' ? 'dark' : 'light';
 }
+
+/**
+ * The `data-color-theme` value for a theme id.
+ *
+ * Every palette owns its own CSS block, so the id must pass through unchanged.
+ * Collapsing dark themes to one palette (previously `dark-dracula`) silently
+ * repainted the brand orange as Dracula purple.
+ */
+export function getColorTheme(theme: Theme | string): string {
+  return theme === 'dark' ? 'dark-dracula' : theme;
+}
