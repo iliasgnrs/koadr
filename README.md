@@ -9,6 +9,7 @@ no limits — just prompt it, build it, ship it.
 Koadr is model-agnostic: bring your own keys (DeepSeek, Claude, OpenAI, Gemini, Groq,
 Ollama, LM Studio and more) and run Node.js in the browser through WebContainers.
 
+- **Website**: [koadr.dev](https://koadr.dev) — source in [iliasgnrs/koadr-site-showcase](https://github.com/iliasgnrs/koadr-site-showcase)
 - **Live app**: [app.koadr.dev](https://app.koadr.dev)
 - **FAQ**: [FAQ.md](FAQ.md)
 - **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
