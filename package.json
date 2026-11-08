@@ -57,7 +57,6 @@
     "electron:build:win": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --win",
     "electron:build:linux": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --linux",
     "electron:build:dist": "rimraf dist && pnpm electron:build:renderer && pnpm electron:build:deps && electron-builder --mwl",
-    "deploy:pages": "pnpm run build && wrangler pages deploy build/client --project-name koadr",
     "cf:dev": "wrangler dev",
     "build:node": "DEPLOY_TARGET=node react-router build && tsc --project tsconfig.node-server.json"
   },

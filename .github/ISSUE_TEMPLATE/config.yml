@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Live app
-    url: https://koadr.iliasgnrs.workers.dev
+    url: https://app.koadr.dev
     about: Try Koadr in the browser before opening an issue.
   - name: FAQ & troubleshooting
     url: https://github.com/iliasgnrs/koadr/blob/main/FAQ.md

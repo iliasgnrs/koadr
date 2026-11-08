@@ -1,6 +1,6 @@
 # Deploying Koadr to the VPS
 
-The VPS (`koadr.dev`, `91.98.89.225`) is the only deployment target. Images are built
+The VPS (`app.koadr.dev`, `91.98.89.225`) is the only deployment target. Images are built
 locally and shipped; nothing is built on the host (no Node toolchain there, and it
 competes with the WordPress stack for RAM).
 
@@ -58,8 +58,8 @@ Verify through the public edge, not just localhost — a healthy container behin
 broken Caddy still looks fine from inside:
 
 ```bash
-curl -s -o /dev/null -w "root: %{http_code}\n" https://koadr.dev/            # 302 → /login
-curl -s -o /dev/null -w "login: %{http_code} %{size_download}B\n" https://koadr.dev/login
+curl -s -o /dev/null -w "root: %{http_code}\n" https://app.koadr.dev/   # 302 → /login
+curl -s -o /dev/null -w "login: %{http_code} %{size_download}B\n" https://app.koadr.dev/login
 ```
 
 `302` on `/` is the auth guard working, not a failure. A `200` with a tiny body is.
@@ -68,8 +68,8 @@ To prove the *right* build is live, fetch the asset the page references and grep
 string from the change:
 
 ```bash
-A=$(curl -s https://koadr.dev/login | grep -o '/assets/Chat.client-[^"]*\.js' | head -1)
-curl -s "https://koadr.dev$A" | grep -c "<a string from the change>"   # expect ≥ 1
+A=$(curl -s https://app.koadr.dev/login | grep -o '/assets/Chat.client-[^"]*\.js' | head -1)
+curl -s "https://app.koadr.dev$A" | grep -c "<a string from the change>"   # expect ≥ 1
 ```
 
 ## 5. Clean up

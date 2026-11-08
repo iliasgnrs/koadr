@@ -195,7 +195,7 @@ services:
     logging: *default-logging
 
 networks:
-  # The shared edge, so koadr.dev/auth/v1/* can reach GoTrue. That is how emailed
+  # The shared edge, so app.koadr.dev/auth/v1/* can reach GoTrue. That is how emailed
   # confirmation and magic links resolve: GoTrue builds them from
   # API_EXTERNAL_URL and they land on the public domain.
   proxy:
