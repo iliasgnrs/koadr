@@ -220,7 +220,7 @@ export function FirstRunOnboarding() {
             {stepTitles.map((title, index) => (
               <span
                 key={title}
-                className={`h-1 flex-1 rounded-full ${index <= step ? 'bg-[#8b5cf6]' : 'bg-[#393641]'}`}
+                className={`h-1 flex-1 rounded-full ${index <= step ? 'bg-[#FF6600]' : 'bg-[#393641]'}`}
               />
             ))}
           </div>
@@ -241,7 +241,7 @@ export function FirstRunOnboarding() {
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Your name"
-              className="w-full rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 text-sm text-[#f4f1fa] outline-none focus:border-[#8b5cf6]"
+              className="w-full rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 text-sm text-[#f4f1fa] outline-none focus:border-[#FF6600]"
             />
             <div>
               <span className="mb-2 block text-sm font-medium">Choose an avatar</span>
@@ -253,7 +253,7 @@ export function FirstRunOnboarding() {
                     aria-label={`Use ${preset.name} avatar`}
                     aria-pressed={avatar === preset.src}
                     onClick={() => setAvatar(preset.src)}
-                    className={`h-14 w-14 overflow-hidden rounded-full border-2 ${avatar === preset.src ? 'border-[#8b5cf6] ring-2 ring-[#8b5cf6]/40' : 'border-[#393641]'}`}
+                    className={`h-14 w-14 overflow-hidden rounded-full border-2 ${avatar === preset.src ? 'border-[#FF6600] ring-2 ring-[#FF6600]/40' : 'border-[#393641]'}`}
                   >
                     <img src={preset.src} alt="" className="h-full w-full object-cover" />
                   </button>
@@ -345,7 +345,7 @@ export function FirstRunOnboarding() {
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
               placeholder="Paste your API key"
-              className="w-full rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 text-sm text-[#f4f1fa] outline-none focus:border-[#8b5cf6]"
+              className="w-full rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 text-sm text-[#f4f1fa] outline-none focus:border-[#FF6600]"
             />
           </div>
         )}
@@ -364,7 +364,7 @@ export function FirstRunOnboarding() {
               value={mcpText}
               onChange={(event) => setMcpText(event.target.value)}
               rows={9}
-              className="w-full resize-y rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 font-mono text-xs text-[#f4f1fa] outline-none focus:border-[#8b5cf6]"
+              className="w-full resize-y rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 font-mono text-xs text-[#f4f1fa] outline-none focus:border-[#FF6600]"
             />
             {error && (
               <p role="alert" className="text-sm text-red-500">
@@ -386,14 +386,10 @@ export function FirstRunOnboarding() {
                 onChange={(event) => setSelectedTheme(event.target.value as Theme)}
                 className="w-full rounded-md border border-[#302e39] bg-[#121116] px-3 py-2 text-sm text-[#f4f1fa]"
               >
-                {(['light', 'dark'] as const).map((mode) => (
-                  <optgroup key={mode} label={`${mode[0].toUpperCase()}${mode.slice(1)} themes`}>
-                    {THEMES.filter((theme) => theme.mode === mode).map((theme) => (
-                      <option key={theme.id} value={theme.id}>
-                        {theme.name}
-                      </option>
-                    ))}
-                  </optgroup>
+                {THEMES.map((theme) => (
+                  <option key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -412,7 +408,7 @@ export function FirstRunOnboarding() {
                   onChange={(event) =>
                     setInterfaceOptions({ ...interfaceOptions, accentIntensity: Number(event.target.value) })
                   }
-                  className="w-1/2 accent-[#8b5cf6]"
+                  className="w-1/2 accent-[#FF6600]"
                 />
               </label>
             </div>
@@ -426,7 +422,7 @@ export function FirstRunOnboarding() {
                     type="button"
                     aria-pressed={interfaceOptions.cornerRadius === radius}
                     onClick={() => setInterfaceOptions({ ...interfaceOptions, cornerRadius: radius })}
-                    className={`appearance-none rounded-md px-2 py-1 text-xs capitalize ${interfaceOptions.cornerRadius === radius ? 'bg-[#8b5cf6] text-white' : 'bg-[#302e39] text-[#b8b3c2]'}`}
+                    className={`appearance-none rounded-md px-2 py-1 text-xs capitalize ${interfaceOptions.cornerRadius === radius ? 'bg-[#FF6600] text-[#1A1A1A]' : 'bg-[#302e39] text-[#b8b3c2]'}`}
                   >
                     {radius}
                   </button>
@@ -452,7 +448,7 @@ export function FirstRunOnboarding() {
                   type="checkbox"
                   checked={interfaceOptions[key]}
                   onChange={(event) => setInterfaceOptions({ ...interfaceOptions, [key]: event.target.checked })}
-                  className="h-4 w-4 accent-[#8b5cf6]"
+                  className="h-4 w-4 accent-[#FF6600]"
                 />
               </label>
             ))}
@@ -465,7 +461,7 @@ export function FirstRunOnboarding() {
               <button
                 type="button"
                 onClick={() => setStep((current) => current - 1)}
-                className="appearance-none rounded-md border border-[#393641] bg-[#302e39] px-4 py-2 text-sm text-[#eeeaf5] hover:bg-[#3b3846] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]"
+                className="appearance-none rounded-md border border-[#393641] bg-[#302e39] px-4 py-2 text-sm text-[#eeeaf5] hover:bg-[#3b3846] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6600]"
               >
                 Back
               </button>
@@ -474,7 +470,7 @@ export function FirstRunOnboarding() {
               type="button"
               disabled={saving}
               onClick={() => void next()}
-              className="rounded-md bg-[#8b5cf6] px-4 py-2 text-sm font-medium text-white hover:bg-[#9a6bff] disabled:opacity-60"
+              className="rounded-md bg-[#FF6600] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-[#E65C00] disabled:opacity-60"
             >
               {saving ? 'Saving…' : step === 3 ? 'Finish setup' : 'Continue'}
             </button>

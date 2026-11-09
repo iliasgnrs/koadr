@@ -1,7 +1,7 @@
 import { atom } from 'nanostores';
 import { logStore } from './logs';
 import { queueSettingsSync } from '~/lib/settings-client';
-import { getColorTheme, getThemeMode, THEMES, type Theme } from '~/types/theme';
+import { getThemeMode, normaliseTheme, type Theme } from '~/types/theme';
 
 export type { Theme } from '~/types/theme';
 
@@ -11,42 +11,41 @@ export function themeIsDark() {
   return getThemeMode(themeStore.get()) === 'dark';
 }
 
-export const DEFAULT_THEME: Theme = 'dark-halloween-harvest';
+export const DEFAULT_THEME: Theme = 'dark';
 
 export const themeStore = atom<Theme>(initStore());
-
-function isTheme(value: string | null): value is Theme | 'dark' {
-  return value === 'dark' || THEMES.some(({ id }) => id === value);
-}
 
 function initStore() {
   if (!import.meta.env.SSR) {
     const storedTheme = localStorage.getItem(kTheme);
-    const persistedTheme = isTheme(storedTheme) ? storedTheme : undefined;
-    const themeAttribute = document.querySelector('html')?.getAttribute('data-theme');
 
-    return persistedTheme ?? (themeAttribute as Theme) ?? DEFAULT_THEME;
+    if (storedTheme) {
+      const theme = normaliseTheme(storedTheme);
+
+      /*
+       * Rewrite legacy palette ids in place so the upgrade happens once. This is
+       * only the local key — the account copy is normalised when it is applied.
+       */
+      if (storedTheme !== theme) {
+        localStorage.setItem(kTheme, theme);
+      }
+
+      return theme;
+    }
+
+    return normaliseTheme(document.querySelector('html')?.getAttribute('data-theme'));
   }
 
   return DEFAULT_THEME;
 }
 
 export function toggleTheme() {
-  const currentTheme = themeStore.get();
-  const targetMode = getThemeMode(currentTheme) === 'dark' ? 'light' : 'dark';
-  const savedTheme = localStorage.getItem(`bolt_theme_${targetMode}`);
+  const targetMode = getThemeMode(themeStore.get()) === 'dark' ? 'light' : 'dark';
 
-  const newTheme =
-    isTheme(savedTheme) && getThemeMode(savedTheme) === targetMode
-      ? savedTheme
-      : targetMode === 'dark'
-        ? DEFAULT_THEME
-        : 'light';
-
-  setTheme(newTheme);
+  setTheme(targetMode);
 }
 
-export function setTheme(newTheme: Theme | 'dark') {
+export function setTheme(newTheme: Theme) {
   // Update the theme store
   themeStore.set(newTheme);
 
@@ -57,7 +56,6 @@ export function setTheme(newTheme: Theme | 'dark') {
   // Update the HTML attribute
   const root = document.querySelector('html');
   root?.setAttribute('data-theme', getThemeMode(newTheme));
-  root?.setAttribute('data-color-theme', getColorTheme(newTheme));
 
   // Mirror the choice to the account when signed in (debounced, best-effort).
   queueSettingsSync();

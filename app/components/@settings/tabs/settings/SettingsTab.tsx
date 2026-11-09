@@ -332,51 +332,47 @@ export default function SettingsTab() {
             Appearance
           </h2>
           <p className="mt-1 text-xs text-bolt-elements-textSecondary">
-            Choose a light or dark color palette. Your choice is saved on this device.
+            Koadr uses one design in light or dark mode. Your choice is saved on this device.
           </p>
         </div>
-        {(['light', 'dark'] as const).map((mode) => (
-          <div key={mode} className="mb-4 last:mb-0">
-            <h3 className="mb-2 text-xs font-medium capitalize text-bolt-elements-textSecondary">{mode} themes</h3>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {THEMES.filter((theme) => theme.mode === mode).map((theme) => {
-                const selected = activeTheme === theme.id || (activeTheme === 'dark' && theme.id === 'dark-dracula');
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {THEMES.map((theme) => {
+            const selected = activeTheme === theme.id;
 
-                return (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setTheme(theme.id)}
-                    className={`flex min-h-16 items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
-                      selected
-                        ? 'border-bolt-elements-borderColorActive bg-bolt-elements-background-depth-2 ring-1 ring-bolt-elements-borderColorActive'
-                        : 'border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 hover:bg-bolt-elements-background-depth-2'
-                    }`}
-                  >
-                    <span className="flex h-8 w-8 shrink-0 overflow-hidden rounded-md border border-black/10 dark:border-white/10">
-                      {theme.colors.map((color) => (
-                        <span key={color} className="h-full flex-1" style={{ backgroundColor: color }} />
-                      ))}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-bolt-elements-textPrimary">{theme.name}</span>
-                      <span className="block text-xs text-bolt-elements-textSecondary">
-                        {selected ? 'Selected' : 'Select theme'}
-                      </span>
-                    </span>
-                    {selected && (
-                      <span
-                        aria-hidden="true"
-                        className="i-ph-check-circle-fill ml-auto text-lg text-bolt-elements-borderColorActive"
-                      />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
+            return (
+              <button
+                key={theme.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setTheme(theme.id)}
+                className={`flex min-h-16 items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+                  selected
+                    ? 'border-bolt-elements-borderColorActive bg-bolt-elements-background-depth-2 ring-1 ring-bolt-elements-borderColorActive'
+                    : 'border-bolt-elements-borderColor bg-bolt-elements-background-depth-1 hover:bg-bolt-elements-background-depth-2'
+                }`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`h-8 w-8 shrink-0 rounded-md border border-black/10 dark:border-white/10 ${
+                    theme.mode === 'dark' ? 'bg-gray-900' : 'bg-white'
+                  }`}
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium text-bolt-elements-textPrimary">{theme.name}</span>
+                  <span className="block text-xs text-bolt-elements-textSecondary">
+                    {selected ? 'Selected' : 'Select theme'}
+                  </span>
+                </span>
+                {selected && (
+                  <span
+                    aria-hidden="true"
+                    className="i-ph-check-circle-fill ml-auto text-lg text-bolt-elements-borderColorActive"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </section>
       <section
         aria-labelledby="interface-heading"

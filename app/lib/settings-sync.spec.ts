@@ -38,10 +38,11 @@ describe('normaliseInterfaceOptions', () => {
 });
 
 describe('isKnownTheme', () => {
-  it('accepts a shipped theme and rejects anything else', () => {
+  it('accepts any stored theme string so legacy palettes can be migrated', () => {
+    expect(isKnownTheme('dark')).toBe(true);
     expect(isKnownTheme('dark-halloween-harvest')).toBe(true);
-    expect(isKnownTheme('dark-made-up')).toBe(false);
     expect(isKnownTheme(null)).toBe(false);
+    expect(isKnownTheme(42)).toBe(false);
   });
 });
 
@@ -63,12 +64,13 @@ describe('resolveSettings', () => {
     expect(result.action).toBe('apply-remote');
 
     if (result.action === 'apply-remote') {
-      expect(result.settings.theme).toBe('dark-ocean-depths');
+      // Legacy palette ids are migrated to their mode on the way in.
+      expect(result.settings.theme).toBe('dark');
       expect(result.settings.interfaceOptions.accentIntensity).toBe(90);
     }
   });
 
-  it('falls back to the local theme when the server stored an unknown one', () => {
+  it('migrates an unknown stored theme instead of blanking the UI', () => {
     const result = resolveSettings(local, {
       theme: 'dark-removed-theme',
       interfaceOptions: null,
@@ -78,8 +80,8 @@ describe('resolveSettings', () => {
     expect(result.action).toBe('apply-remote');
 
     if (result.action === 'apply-remote') {
-      // An unknown theme must not blank the UI; the local choice survives.
-      expect(result.settings.theme).toBe('light');
+      // Keeping the mode avoids flashing a light UI at a dark-theme user.
+      expect(result.settings.theme).toBe('dark');
       expect(result.settings.interfaceOptions).toEqual(local.interfaceOptions);
     }
   });

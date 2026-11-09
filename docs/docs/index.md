@@ -53,7 +53,7 @@ Also [this pinned post in our community](https://thinktank.ottomator.ai/t/videos
 - **Download projects as ZIP** or push directly to GitHub
 - **Docker support** for containerized development environments
 - **Electron app** for native desktop experience
-- **Theme customization** and accessibility features
+- **Light and dark mode** for a single Koadr brand design
 - **Help icon** in sidebar linking to comprehensive documentation
 
 ---

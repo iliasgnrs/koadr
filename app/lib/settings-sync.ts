@@ -1,5 +1,4 @@
-import type { Theme } from '~/types/theme';
-import { THEMES } from '~/types/theme';
+import { normaliseTheme, type Theme } from '~/types/theme';
 
 export interface InterfaceOptions {
   accentIntensity: number;
@@ -18,8 +17,8 @@ export interface LocalSettings {
 
 export interface RemoteSettings {
   /**
-   * Kept as `string` because it comes from the database, which may hold a theme
-   *  this build no longer ships. `isKnownTheme` decides whether to trust it.
+   * Kept as `string` because it comes from the database, which may still hold a
+   * palette id from before the picker was removed. `normaliseTheme` maps it.
    */
   theme: string | null;
   interfaceOptions: InterfaceOptions | null;
@@ -53,8 +52,12 @@ export function normaliseInterfaceOptions(saved: unknown): InterfaceOptions {
   };
 }
 
-export function isKnownTheme(value: unknown): value is Theme {
-  return typeof value === 'string' && THEMES.some((theme) => theme.id === value);
+/**
+ * Any stored theme is acceptable: legacy palette ids are migrated onto their
+ * light/dark mode rather than rejected, so an old account cannot lose its mode.
+ */
+export function isKnownTheme(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 /**
@@ -79,7 +82,7 @@ export function resolveSettings(
   return {
     action: 'apply-remote',
     settings: {
-      theme: isKnownTheme(remote.theme) ? remote.theme : local.theme,
+      theme: isKnownTheme(remote.theme) ? normaliseTheme(remote.theme) : local.theme,
       interfaceOptions: remote.interfaceOptions
         ? normaliseInterfaceOptions(remote.interfaceOptions)
         : local.interfaceOptions,

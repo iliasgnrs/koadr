@@ -6,6 +6,9 @@ competes with the WordPress stack for RAM).
 
 `ssh adapedu-vps` → `root@91.98.89.225`. The stack lives at `/opt/koadr`.
 
+**Currently running:** `koadr-web:orangetheme`. The previous release is
+`koadr-web:authparticles`, so a rollback needs no re-upload.
+
 ## 1. Build
 
 ```bash
@@ -89,6 +92,27 @@ ssh adapedu-vps 'docker rmi koadr-web:<tag-to-drop>'
 
 `docker image prune` does not help — it only removes dangling (untagged) images, and
 these are all tagged.
+
+## Theme changes
+
+Koadr ships **one brand design** with a light and a dark mode — there is no palette
+picker. When touching anything visual:
+
+- `app/styles/variables.scss` holds only `:root` (light) and `:root[data-theme='dark']`.
+  Do not reintroduce `data-color-theme` blocks; the palette system and its 28 themes were
+  removed deliberately.
+- Accent backgrounds come from `theme('colors.accent.500')` (`#FF6600`). The
+  accent-intensity slider shifts between `accent.600` and `accent.500`; it must never mix
+  toward `transparent`, which used to drop white-on-accent CTAs below WCAG AA.
+- White on `#FF6600` is only 2.9:1. Use the near-black ink `#1A1A1A` for text on accent
+  (5.4–6.1:1).
+- `purple-*` utilities are aliased to the orange ramp in `uno.config.ts`. Raw hex
+  (`#8b5cf6`) is **not** aliased — always use the token or `accent-*`.
+
+Persisted values are migrated, never rejected: `normaliseTheme()` maps any legacy id
+(`dark-dracula`, `light-solarized`, …) onto its light/dark mode. It runs on load, in the
+pre-hydration script, in `resolveSettings`, and in `POST /api/settings` — keep those four
+in sync if the model changes again.
 
 ## Rollback
 

@@ -2,6 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router';
 import { getSupabaseSession } from '~/lib/.server/supabase';
 import { requireApiUser } from '~/lib/auth-guard';
 import { isKnownTheme, normaliseInterfaceOptions } from '~/lib/settings-sync';
+import { normaliseTheme } from '~/types/theme';
 
 /*
  * Server-side settings sync.
@@ -53,12 +54,15 @@ export async function action({ context, request }: ActionFunctionArgs) {
     return Response.json({ ok: false, error: 'Unknown theme' }, { status: 400 });
   }
 
+  // Persist the migrated value, so a legacy palette id is rewritten once.
+  const theme = body.theme === undefined ? undefined : normaliseTheme(body.theme);
+
   const { client } = await getSupabaseSession(request);
 
   const { error } = await client.from('user_settings').upsert(
     {
       profile_id: user.id,
-      ...(body.theme !== undefined ? { theme: body.theme } : {}),
+      ...(theme !== undefined ? { theme } : {}),
       ...(body.interfaceOptions !== undefined
         ? { interface_options: normaliseInterfaceOptions(body.interfaceOptions) }
         : {}),
