@@ -1,19 +1,18 @@
 import { atom } from 'nanostores';
 import { logStore } from './logs';
+import { saveConnectionToAccount } from '~/lib/connections-client';
 import type { GitHubConnection } from '~/types/GitHub';
 
-// Initialize with stored connection or defaults
-const storedConnection = typeof window !== 'undefined' ? localStorage.getItem('github_connection') : null;
-
-const initialConnection: GitHubConnection = storedConnection
-  ? JSON.parse(storedConnection)
-  : {
-      user: null,
-      token: '',
-      tokenType: 'classic',
-    };
-
-export const githubConnection = atom<GitHubConnection>(initialConnection);
+/*
+ * The connection lives on the account (encrypted token, see api/connections).
+ * In memory it starts empty; the token only exists for the session that entered
+ * it, and a stored-but-not-loaded connection shows up as user-only.
+ */
+export const githubConnection = atom<GitHubConnection>({
+  user: null,
+  token: '',
+  tokenType: 'classic',
+});
 export const isConnecting = atom<boolean>(false);
 export const isFetchingStats = atom<boolean>(false);
 
@@ -48,11 +47,6 @@ export async function initializeGitHubConnection() {
       token: '', // Token stored server-side only
       tokenType: 'classic',
     };
-
-    // Store in localStorage for persistence
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('github_connection', JSON.stringify(connectionData));
-    }
 
     // Update the store
     updateGitHubConnection(connectionData);
@@ -130,8 +124,15 @@ export const updateGitHubConnection = (updates: Partial<GitHubConnection>) => {
   const newState = { ...currentState, ...updates };
   githubConnection.set(newState);
 
-  // Persist to localStorage
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('github_connection', JSON.stringify(newState));
+  /*
+   * Only a payload with a real token is written: a token-less update (stats,
+   * user refresh) must not overwrite the stored credential.
+   */
+  if (newState.token) {
+    void saveConnectionToAccount('github', {
+      user: newState.user as unknown as Record<string, unknown>,
+      token: newState.token,
+      tokenType: newState.tokenType,
+    });
   }
 };

@@ -50,11 +50,7 @@ export const shortcutsStore = map<Shortcuts>({
   },
 });
 
-// Create a single key for provider settings
-const PROVIDER_SETTINGS_KEY = 'provider_settings';
-const AUTO_ENABLED_KEY = 'auto_enabled_providers';
-
-// Add this helper function at the top of the file
+// Editor flags and the tab bar are account state (user_settings.editor).
 const isBrowser = typeof window !== 'undefined';
 
 // Interface for configured provider info from server
@@ -82,7 +78,7 @@ const fetchConfiguredProviders = async (): Promise<ConfiguredProvider[]> => {
   }
 };
 
-// Initialize provider settings from both localStorage and server-detected configuration
+// Initialize provider settings from defaults plus server-detected configuration
 const getInitialProviderSettings = (): ProviderSetting => {
   const initialSettings: ProviderSetting = {};
 
@@ -100,26 +96,18 @@ const getInitialProviderSettings = (): ProviderSetting => {
     };
   });
 
-  // Only try to load from localStorage in the browser
-  if (isBrowser) {
-    const savedSettings = localStorage.getItem(PROVIDER_SETTINGS_KEY);
-
-    if (savedSettings) {
-      try {
-        const parsed = JSON.parse(savedSettings);
-        Object.entries(parsed).forEach(([key, value]) => {
-          if (initialSettings[key]) {
-            initialSettings[key].settings = (value as IProviderConfig).settings;
-          }
-        });
-      } catch (error) {
-        console.error('Error parsing saved provider settings:', error);
-      }
-    }
-  }
-
   return initialSettings;
 };
+
+/** Absolute import: settings-client imports this module, so a relative one cycles. */
+const pushSettings = () => import('~/lib/settings-client').then((m) => m.queueSettingsSync());
+
+/** Set by the settings sync once the account reports provider settings. */
+let hasStoredProviderSettings = false;
+
+export function markProviderSettingsStored(stored: boolean) {
+  hasStoredProviderSettings = stored;
+}
 
 // Auto-enable providers that are configured on the server
 const autoEnableConfiguredProviders = async () => {
@@ -130,11 +118,6 @@ const autoEnableConfiguredProviders = async () => {
   try {
     const configuredProviders = await fetchConfiguredProviders();
     const currentSettings = providersStore.get();
-    const savedSettings = localStorage.getItem(PROVIDER_SETTINGS_KEY);
-    const autoEnabledProviders = localStorage.getItem(AUTO_ENABLED_KEY);
-
-    // Track which providers were auto-enabled to avoid overriding user preferences
-    const previouslyAutoEnabled = autoEnabledProviders ? JSON.parse(autoEnabledProviders) : [];
     const newlyAutoEnabled: string[] = [];
 
     let hasChanges = false;
@@ -145,13 +128,11 @@ const autoEnableConfiguredProviders = async () => {
 
         if (currentProvider) {
           /*
-           * Only auto-enable if:
-           * 1. Provider is not already enabled, AND
-           * 2. Either we haven't saved settings yet (first time) OR provider was previously auto-enabled
+           * Only auto-enable a provider that is still off, and only while the
+           * account has no saved provider settings at all. Once the user has
+           * toggled anything on any device, their choice wins everywhere.
            */
-          const hasUserSettings = savedSettings !== null;
-          const wasAutoEnabled = previouslyAutoEnabled.includes(name);
-          const shouldAutoEnable = !currentProvider.settings.enabled && (!hasUserSettings || wasAutoEnabled);
+          const shouldAutoEnable = !currentProvider.settings.enabled && !hasStoredProviderSettings;
 
           if (shouldAutoEnable) {
             currentSettings[name] = {
@@ -169,15 +150,8 @@ const autoEnableConfiguredProviders = async () => {
     });
 
     if (hasChanges) {
-      // Update the store
       providersStore.set(currentSettings);
-
-      // Save to localStorage
-      localStorage.setItem(PROVIDER_SETTINGS_KEY, JSON.stringify(currentSettings));
-
-      // Update the auto-enabled providers list
-      const allAutoEnabled = [...new Set([...previouslyAutoEnabled, ...newlyAutoEnabled])];
-      localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(allAutoEnabled));
+      void pushSettings();
 
       console.log(`Auto-enabled providers: ${newlyAutoEnabled.join(', ')}`);
     }
@@ -191,193 +165,141 @@ export const providersStore = map<ProviderSetting>(getInitialProviderSettings())
 // Export the auto-enable function for use in components
 export const initializeProviders = autoEnableConfiguredProviders;
 
-// Initialize providers when the module loads (in browser only)
-if (isBrowser) {
-  // Use a small delay to ensure DOM and other resources are ready
-  setTimeout(() => {
-    autoEnableConfiguredProviders();
-  }, 100);
-}
-
 // Create a function to update provider settings that handles both store and persistence
 export const updateProviderSettings = (provider: string, settings: ProviderSetting) => {
   const currentSettings = providersStore.get();
+  const currentProvider = currentSettings[provider];
+
+  if (!currentProvider) {
+    return;
+  }
 
   // Create new provider config with updated settings
   const updatedProvider = {
-    ...currentSettings[provider],
+    ...currentProvider,
     settings: {
-      ...currentSettings[provider].settings,
+      ...currentProvider.settings,
       ...settings,
     },
   };
 
   // Update the store with new settings
   providersStore.setKey(provider, updatedProvider);
+  markProviderSettingsStored(true);
 
-  // Save to localStorage
-  const allSettings = providersStore.get();
-  localStorage.setItem(PROVIDER_SETTINGS_KEY, JSON.stringify(allSettings));
-
-  // If this is a local provider, update the auto-enabled tracking
-  if (LOCAL_PROVIDERS.includes(provider) && updatedProvider.settings.enabled !== undefined) {
-    updateAutoEnabledTracking(provider, updatedProvider.settings.enabled);
-  }
+  /*
+   * Mirror to the account. The write is debounced and only runs when signed in
+   * (401 is ignored), so a toggle does not fire a request per click.
+   */
+  void pushSettings();
 };
 
-// Update auto-enabled tracking when user manually changes provider settings
-const updateAutoEnabledTracking = (providerName: string, isEnabled: boolean) => {
-  if (!isBrowser) {
-    return;
-  }
-
-  try {
-    const autoEnabledProviders = localStorage.getItem(AUTO_ENABLED_KEY);
-    const currentAutoEnabled = autoEnabledProviders ? JSON.parse(autoEnabledProviders) : [];
-
-    if (isEnabled) {
-      // If user enables provider, add to auto-enabled list (for future detection)
-      if (!currentAutoEnabled.includes(providerName)) {
-        currentAutoEnabled.push(providerName);
-        localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(currentAutoEnabled));
-      }
-    } else {
-      // If user disables provider, remove from auto-enabled list (respect user choice)
-      const updatedAutoEnabled = currentAutoEnabled.filter((name: string) => name !== providerName);
-      localStorage.setItem(AUTO_ENABLED_KEY, JSON.stringify(updatedAutoEnabled));
-    }
-  } catch (error) {
-    console.error('Error updating auto-enabled tracking:', error);
-  }
-};
-
+/*
+ * Editor flags and the tab bar are account state (`user_settings.editor`),
+ * hydrated by `applyEditorSettings` after the settings sync. They start at their
+ * defaults and are never written to the browser.
+ */
 export const isDebugMode = atom(false);
 
-// Define keys for localStorage
-const SETTINGS_KEYS = {
-  LATEST_BRANCH: 'isLatestBranch',
-  AUTO_SELECT_TEMPLATE: 'autoSelectTemplate',
-  CONTEXT_OPTIMIZATION: 'contextOptimizationEnabled',
-  EVENT_LOGS: 'isEventLogsEnabled',
-  PROMPT_ID: 'promptId',
-  DEVELOPER_MODE: 'isDeveloperMode',
-} as const;
+export const latestBranchStore = atom<boolean>(false);
+export const autoSelectStarterTemplate = atom<boolean>(true);
+export const enableContextOptimizationStore = atom<boolean>(true);
+export const isEventLogsEnabled = atom<boolean>(true);
+export const promptStore = atom<string>('default');
 
-// Initialize settings from localStorage or defaults
-const getInitialSettings = () => {
-  const getStoredBoolean = (key: string, defaultValue: boolean): boolean => {
-    if (!isBrowser) {
-      return defaultValue;
-    }
-
-    const stored = localStorage.getItem(key);
-
-    if (stored === null) {
-      return defaultValue;
-    }
-
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return defaultValue;
-    }
-  };
-
-  return {
-    latestBranch: getStoredBoolean(SETTINGS_KEYS.LATEST_BRANCH, false),
-    autoSelectTemplate: getStoredBoolean(SETTINGS_KEYS.AUTO_SELECT_TEMPLATE, true),
-    contextOptimization: getStoredBoolean(SETTINGS_KEYS.CONTEXT_OPTIMIZATION, true),
-    eventLogs: getStoredBoolean(SETTINGS_KEYS.EVENT_LOGS, true),
-    promptId: isBrowser ? localStorage.getItem(SETTINGS_KEYS.PROMPT_ID) || 'default' : 'default',
-    developerMode: getStoredBoolean(SETTINGS_KEYS.DEVELOPER_MODE, false),
-  };
-};
-
-// Initialize stores with persisted values
-const initialSettings = getInitialSettings();
-
-export const latestBranchStore = atom<boolean>(initialSettings.latestBranch);
-export const autoSelectStarterTemplate = atom<boolean>(initialSettings.autoSelectTemplate);
-export const enableContextOptimizationStore = atom<boolean>(initialSettings.contextOptimization);
-export const isEventLogsEnabled = atom<boolean>(initialSettings.eventLogs);
-export const promptStore = atom<string>(initialSettings.promptId);
-
-// Helper functions to update settings with persistence
 export const updateLatestBranch = (enabled: boolean) => {
   latestBranchStore.set(enabled);
-  localStorage.setItem(SETTINGS_KEYS.LATEST_BRANCH, JSON.stringify(enabled));
+  void pushSettings();
 };
 
 export const updateAutoSelectTemplate = (enabled: boolean) => {
   autoSelectStarterTemplate.set(enabled);
-  localStorage.setItem(SETTINGS_KEYS.AUTO_SELECT_TEMPLATE, JSON.stringify(enabled));
+  void pushSettings();
 };
 
 export const updateContextOptimization = (enabled: boolean) => {
   enableContextOptimizationStore.set(enabled);
-  localStorage.setItem(SETTINGS_KEYS.CONTEXT_OPTIMIZATION, JSON.stringify(enabled));
+  void pushSettings();
 };
 
 export const updateEventLogs = (enabled: boolean) => {
   isEventLogsEnabled.set(enabled);
-  localStorage.setItem(SETTINGS_KEYS.EVENT_LOGS, JSON.stringify(enabled));
+  void pushSettings();
 };
 
 export const updatePromptId = (id: string) => {
   promptStore.set(id);
-  localStorage.setItem(SETTINGS_KEYS.PROMPT_ID, id);
+  void pushSettings();
 };
 
-// Initialize tab configuration from localStorage or defaults
-const getInitialTabConfiguration = (): TabWindowConfig => {
-  const defaultConfig: TabWindowConfig = {
-    userTabs: DEFAULT_TAB_CONFIG.filter((tab): tab is UserTabConfig => tab.window === 'user'),
+function defaultTabConfiguration(): TabWindowConfig {
+  return { userTabs: DEFAULT_TAB_CONFIG.filter((tab): tab is UserTabConfig => tab.window === 'user') };
+}
+
+export const tabConfigurationStore = map<TabWindowConfig>(defaultTabConfiguration());
+
+/** Refresh the exports below, so a debounced push sends the account's values. */
+export function editorSettingsPayload(): Record<string, unknown> {
+  return {
+    latestBranch: latestBranchStore.get(),
+    autoSelectTemplate: autoSelectStarterTemplate.get(),
+    contextOptimization: enableContextOptimizationStore.get(),
+    eventLogs: isEventLogsEnabled.get(),
+    promptId: promptStore.get(),
+    developerMode: isDebugMode.get(),
+    tabConfiguration: tabConfigurationStore.get(),
+  };
+}
+
+/** Apply the account's editor flags. Missing keys keep the current value. */
+export function applyEditorSettings(editor: Record<string, unknown>) {
+  const boolean = (key: string, store: { set: (value: boolean) => void }) => {
+    if (typeof editor[key] === 'boolean') {
+      store.set(editor[key] as boolean);
+    }
   };
 
-  if (!isBrowser) {
-    return defaultConfig;
+  boolean('latestBranch', latestBranchStore);
+  boolean('autoSelectTemplate', autoSelectStarterTemplate);
+  boolean('contextOptimization', enableContextOptimizationStore);
+  boolean('eventLogs', isEventLogsEnabled);
+  boolean('developerMode', isDebugMode);
+
+  if (typeof editor.promptId === 'string') {
+    promptStore.set(editor.promptId);
   }
 
-  try {
-    const saved = localStorage.getItem('bolt_tab_configuration');
+  const tabs = editor.tabConfiguration as { userTabs?: unknown } | undefined;
 
-    if (!saved) {
-      return defaultConfig;
-    }
-
-    const parsed = JSON.parse(saved);
-
-    if (!parsed?.userTabs) {
-      return defaultConfig;
-    }
-
-    // Ensure proper typing of loaded configuration
-    const savedTabs = parsed.userTabs.filter(
-      (tab: TabVisibilityConfig): tab is UserTabConfig => tab.window === 'user' && Boolean(tab.id),
-    );
-
-    const savedIds = new Set(savedTabs.map((tab: UserTabConfig) => tab.id));
-    const missingDefaults = defaultConfig.userTabs.filter((tab) => !savedIds.has(tab.id));
-
-    return { userTabs: [...savedTabs, ...missingDefaults] };
-  } catch (error) {
-    console.warn('Failed to parse tab configuration:', error);
-    return defaultConfig;
+  if (tabs && Array.isArray(tabs.userTabs)) {
+    tabConfigurationStore.set(sanitiseTabConfiguration({ userTabs: tabs.userTabs as TabVisibilityConfig[] }));
   }
-};
+}
 
-// console.log('Initial tab configuration:', getInitialTabConfiguration());
+/** Keep only known tabs and append defaults the saved set is missing. */
+export function sanitiseTabConfiguration(saved: { userTabs?: TabVisibilityConfig[] }): TabWindowConfig {
+  const defaults = defaultTabConfiguration();
 
-export const tabConfigurationStore = map<TabWindowConfig>(getInitialTabConfiguration());
+  if (!saved?.userTabs) {
+    return defaults;
+  }
 
-// Helper function to reset tab configuration
+  const savedTabs = saved.userTabs.filter((tab): tab is UserTabConfig => tab?.window === 'user' && Boolean(tab.id));
+
+  const savedIds = new Set(savedTabs.map((tab) => tab.id));
+  const missingDefaults = defaults.userTabs.filter((tab) => !savedIds.has(tab.id));
+
+  return { userTabs: [...savedTabs, ...missingDefaults] };
+}
+
+export function updateTabConfiguration(config: TabWindowConfig) {
+  tabConfigurationStore.set(config);
+  void pushSettings();
+}
+
 export const resetTabConfiguration = () => {
-  const defaultConfig: TabWindowConfig = {
-    userTabs: DEFAULT_TAB_CONFIG.filter((tab): tab is UserTabConfig => tab.window === 'user'),
-  };
-
-  tabConfigurationStore.set(defaultConfig);
-  localStorage.setItem('bolt_tab_configuration', JSON.stringify(defaultConfig));
+  tabConfigurationStore.set(defaultTabConfiguration());
+  void pushSettings();
 };
 
 // First, let's define the SettingsStore interface

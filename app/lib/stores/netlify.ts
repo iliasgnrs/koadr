@@ -1,23 +1,21 @@
 import { atom } from 'nanostores';
 import { toast } from 'react-toastify';
 import { logStore } from './logs';
+import { saveConnectionToAccount } from '~/lib/connections-client';
 import type { NetlifyConnection, NetlifyUser } from '~/types/netlify';
 
-// Initialize with stored connection or environment variable
-const storedConnection = typeof window !== 'undefined' ? localStorage.getItem('netlify_connection') : null;
 const envToken = import.meta.env.VITE_NETLIFY_ACCESS_TOKEN;
 console.log('Netlify store: envToken loaded:', envToken ? '[TOKEN_EXISTS]' : '[NO_TOKEN]');
 
-// If we have an environment token but no stored connection, initialize with the env token
-const initialConnection: NetlifyConnection = storedConnection
-  ? JSON.parse(storedConnection)
-  : {
-      user: null,
-      token: envToken || '',
-      stats: undefined,
-    };
-
-export const netlifyConnection = atom<NetlifyConnection>(initialConnection);
+/*
+ * The connection lives encrypted on the account; only the environment token is
+ * available to a fresh session without a round-trip.
+ */
+export const netlifyConnection = atom<NetlifyConnection>({
+  user: null,
+  token: envToken || '',
+  stats: undefined,
+});
 export const isConnecting = atom<boolean>(false);
 export const isFetchingStats = atom<boolean>(false);
 
@@ -54,8 +52,10 @@ export async function initializeNetlifyConnection() {
       token: envToken,
     };
 
-    // Store in localStorage for persistence
-    localStorage.setItem('netlify_connection', JSON.stringify(connectionData));
+    void saveConnectionToAccount('netlify', {
+      user: userData as unknown as Record<string, unknown>,
+      token: envToken,
+    });
 
     // Update the store
     updateNetlifyConnection(connectionData);
@@ -75,9 +75,12 @@ export const updateNetlifyConnection = (updates: Partial<NetlifyConnection>) => 
   const newState = { ...currentState, ...updates };
   netlifyConnection.set(newState);
 
-  // Persist to localStorage
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('netlify_connection', JSON.stringify(newState));
+  // A token-less update (stats) must not overwrite the stored credential.
+  if (newState.token) {
+    void saveConnectionToAccount('netlify', {
+      user: newState.user as unknown as Record<string, unknown>,
+      token: newState.token,
+    });
   }
 };
 

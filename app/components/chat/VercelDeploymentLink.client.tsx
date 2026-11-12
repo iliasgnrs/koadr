@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { useEffect, useState } from 'react';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { chatId } from '~/lib/persistence/useChatHistory';
 import { useMCPStore } from '~/lib/stores/mcp';
 import { vercelConnection } from '~/lib/stores/vercel';
@@ -8,6 +9,7 @@ import { vercelConnection } from '~/lib/stores/vercel';
 export function VercelDeploymentLink() {
   const connection = useStore(vercelConnection);
   const currentChatId = useStore(chatId);
+  const projectTarget = useDeploymentTarget(currentChatId, 'vercelProjectId');
   const isConnectorEnabled = useMCPStore((state) => state.isInitialized && state.settings.connectorEnabled.vercel);
   const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +21,7 @@ export function VercelDeploymentLink() {
       }
 
       // Check if we have a stored project ID for this chat
-      const projectId = localStorage.getItem(`vercel-project-${currentChatId}`);
+      const projectId = projectTarget.value as string | undefined;
 
       if (!projectId) {
         return;

@@ -6,8 +6,10 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { GitHubAuthDialog } from '~/components/@settings/tabs/github/components/GitHubAuthDialog';
 import { SearchInput, EmptyState, StatusIndicator, Badge } from '~/components/ui';
-import { getLocalStorage } from '~/lib/persistence/localStorage';
+import { deleteConnectionFromAccount } from '~/lib/connections-client';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { chatId } from '~/lib/persistence/useChatHistory';
+import { githubConnectionStore } from '~/lib/stores/githubConnection';
 import { logStore } from '~/lib/stores/logs';
 import type { GitHubUserResponse, GitHubRepoInfo } from '~/types/GitHub';
 import { classNames } from '~/utils/classNames';
@@ -33,6 +35,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
   const [pushedFiles, setPushedFiles] = useState<{ path: string; size: number }[]>([]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const currentChatId = useStore(chatId);
+  const repoTarget = useDeploymentTarget(currentChatId, 'githubRepo');
 
   /*
    * Load GitHub connection on mount
@@ -57,7 +60,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
 
   useEffect(() => {
     if (isOpen) {
-      const connection = getLocalStorage('github_connection');
+      const connection = githubConnectionStore.get();
 
       // Set a default repository name based on the project name with proper sanitization
       setRepoName(sanitizeRepoName(projectName));
@@ -136,12 +139,8 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
             toast.error('GitHub token expired. Please reconnect your account.');
 
             // Clear invalid token
-            const connection = getLocalStorage('github_connection');
-
-            if (connection) {
-              localStorage.removeItem('github_connection');
-              setUser(null);
-            }
+            void deleteConnectionFromAccount('github');
+            setUser(null);
           } else if (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0') {
             // Rate limit exceeded
             const resetTime = response.headers.get('x-ratelimit-reset');
@@ -190,7 +189,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const connection = getLocalStorage('github_connection');
+    const connection = githubConnectionStore.get();
 
     if (!connection?.token || !connection?.user) {
       toast.error('Please connect your GitHub account in Settings > Connections first');
@@ -463,16 +462,13 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
         throw new Error(`Failed during git operations: ${gitErrorMsg}`);
       }
 
-      // Save the repository information for this chat
+      // Save the repository information on the chat, so another device sees it.
       const sanitizedRepoName = sanitizeRepoName(repoName);
-      localStorage.setItem(
-        `github-repo-${currentChatId}`,
-        JSON.stringify({
-          owner: connection.user.login,
-          name: sanitizedRepoName,
-          url: `https://github.com/${connection.user.login}/${sanitizedRepoName}`,
-        }),
-      );
+      repoTarget.set({
+        owner: connection.user.login,
+        name: sanitizedRepoName,
+        url: `https://github.com/${connection.user.login}/${sanitizedRepoName}`,
+      });
 
       // Show success dialog
       setShowSuccessDialog(true);
@@ -552,7 +548,7 @@ export function GitHubDeploymentDialog({ isOpen, onClose, projectName, files }: 
     setShowAuthDialog(false);
 
     // Refresh user data after auth
-    const connection = getLocalStorage('github_connection');
+    const connection = githubConnectionStore.get();
 
     if (connection?.user && connection?.token) {
       setUser(connection.user);

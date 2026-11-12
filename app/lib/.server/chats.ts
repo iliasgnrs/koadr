@@ -58,7 +58,7 @@ function toStoredChat(row: ChatRow, messages: UIMessage[]): StoredChat {
  * to reconstruct the same information. It runs inside a transaction so a failure
  * cannot leave a chat with no messages.
  */
-export async function upsertChat(profileId: string, chat: StoredChat): Promise<void> {
+export async function upsertChat(profileId: string, chat: StoredChat & { snapshot?: unknown }): Promise<void> {
   /*
    * One transaction for the chat row and its messages: a half-written chat shows
    * up in the sidebar with no content, which is worse than a failed save.
@@ -74,15 +74,23 @@ export async function upsertChat(profileId: string, chat: StoredChat): Promise<v
      * turns it into an explicit error rather than a silent success.
      */
     const chatWrite = await client.query(
-      `insert into public.chats (id, profile_id, description, url_id, metadata, updated_at)
-       values ($1, $2, $3, $4, $5::jsonb, now())
+      `insert into public.chats (id, profile_id, description, url_id, metadata, snapshot, updated_at)
+       values ($1, $2, $3, $4, $5::jsonb, $6::jsonb, now())
        on conflict (id) do update
          set description = excluded.description,
              url_id = excluded.url_id,
              metadata = excluded.metadata,
+             snapshot = coalesce(excluded.snapshot, public.chats.snapshot),
              updated_at = now()
          where public.chats.profile_id = $2`,
-      [chat.id, profileId, chat.description ?? null, chat.urlId ?? null, JSON.stringify(chat.metadata ?? {})],
+      [
+        chat.id,
+        profileId,
+        chat.description ?? null,
+        chat.urlId ?? null,
+        JSON.stringify(chat.metadata ?? {}),
+        chat.snapshot === undefined ? null : JSON.stringify(chat.snapshot),
+      ],
     );
 
     if (chatWrite.rowCount === 0) {
@@ -115,6 +123,24 @@ export async function upsertChat(profileId: string, chat: StoredChat): Promise<v
   } finally {
     client.release();
   }
+}
+
+/** Per-chat project snapshot (the files the workbench held at save time). */
+export async function setChatSnapshot(profileId: string, chatId: string, snapshot: unknown): Promise<void> {
+  await getPgPool().query('update public.chats set snapshot = $3::jsonb where id = $1 and profile_id = $2', [
+    chatId,
+    profileId,
+    snapshot === undefined ? null : JSON.stringify(snapshot),
+  ]);
+}
+
+export async function getChatSnapshot(profileId: string, chatId: string): Promise<unknown | null> {
+  const { rows } = await getPgPool().query<{ snapshot: unknown }>(
+    'select snapshot from public.chats where id = $1 and profile_id = $2',
+    [chatId, profileId],
+  );
+
+  return rows[0]?.snapshot ?? null;
 }
 
 export async function listChats(profileId: string): Promise<StoredChat[]> {

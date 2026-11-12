@@ -139,14 +139,7 @@ export const Menu = () => {
         throw new Error('Database not available');
       }
 
-      // Delete chat snapshot from localStorage
-      try {
-        const snapshotKey = `snapshot:${id}`;
-        localStorage.removeItem(snapshotKey);
-        console.log('Removed snapshot for chat:', id);
-      } catch (snapshotError) {
-        console.error(`Error deleting snapshot for chat ${id}:`, snapshotError);
-      }
+      // Snapshots live on the chat row and are deleted with it (cascade).
 
       // Delete the chat from the database
       await deleteById(db, id);

@@ -7,8 +7,12 @@ import { Header } from '~/components/header/Header';
 import { FirstRunOnboarding } from '~/components/onboarding/FirstRunOnboarding';
 import BackgroundRays from '~/components/ui/BackgroundRays';
 import { requireUser } from '~/lib/auth-guard';
+import { loadConnections } from '~/lib/connections-client';
 import { beginApplyingRemote, endApplyingRemote, syncSettingsFromServer } from '~/lib/settings-client';
+import { hydrateGitHubConnection } from '~/lib/stores/githubConnection';
+import { hydrateGitLabConnection } from '~/lib/stores/gitlabConnection';
 import { hydrateProfileFromAccount } from '~/lib/stores/profile';
+import { initializeProviders, providersStore, type ProviderSetting } from '~/lib/stores/settings';
 import { setTheme } from '~/lib/stores/theme';
 
 export const meta: MetaFunction = () => {
@@ -44,9 +48,8 @@ export default function Index() {
   /*
    * Reconcile this browser with the account once per authenticated load.
    *
-   * The page has already rendered from localStorage by the time this runs, so a
-   * slow or failed request never blocks the UI — it only means this device keeps
-   * its local choices for now.
+   * Rendering never waits on this: the pre-hydration script paints the account's
+   * theme, and a failed request only leaves the defaults in place.
    */
   useEffect(() => {
     /*
@@ -55,6 +58,15 @@ export default function Index() {
      * not delay the other.
      */
     void hydrateProfileFromAccount();
+    void loadConnections().then((connections) => {
+      if (connections.github) {
+        void hydrateGitHubConnection();
+      }
+
+      if (connections.gitlab) {
+        void hydrateGitLabConnection();
+      }
+    });
 
     let cancelled = false;
 
@@ -64,17 +76,45 @@ export default function Index() {
       }
 
       /*
-       * Applied through setTheme so the store, localStorage and the html
-       * attributes all move together. The remote flag stops the resulting
-       * setTheme() call from queueing a push back to the server.
+       * Applied through setTheme so the store and the html attributes move
+       * together. The remote flag stops the resulting setTheme() call from
+       * queueing a push back to the server.
        */
-      beginApplyingRemote();
+      if (applied.theme) {
+        beginApplyingRemote();
 
-      try {
-        setTheme(applied.theme as never);
-      } finally {
-        endApplyingRemote();
+        try {
+          setTheme(applied.theme as never);
+        } finally {
+          endApplyingRemote();
+        }
       }
+
+      /*
+       * Providers are not covered by setTheme, so the store is updated here.
+       */
+      if (applied.providerSettings) {
+        /*
+         * The account is the base: providers it enables/disabled replace local
+         * flags, while entries it does not know about keep their defaults.
+         */
+        const current = providersStore.get();
+        const next = { ...current };
+
+        for (const [name, entry] of Object.entries(applied.providerSettings as ProviderSetting)) {
+          if (current[name]) {
+            next[name] = { ...current[name], settings: { ...current[name].settings, ...entry.settings } };
+          }
+        }
+
+        providersStore.set(next);
+      }
+
+      /*
+       * Providers configured through environment variables are auto-enabled once,
+       * after the account copy is in place, so an explicit choice is never undone.
+       */
+      void initializeProviders();
     });
 
     return () => {

@@ -59,28 +59,35 @@ export const links: LinksFunction = () => [
   },
 ];
 
+/*
+ * Applies the account's theme/interface options before hydration. This used to
+ * read localStorage; the account is now the only copy, so the values are fetched
+ * from /api/settings/shell and written onto <html>. No browser storage is used —
+ * an unauthenticated or failed request simply renders the defaults.
+ */
 const inlineThemeCode = stripIndents`
   setTutorialKitTheme();
 
   function setTutorialKitTheme() {
-    try {
-      const options = JSON.parse(localStorage.getItem('bolt_interface_options') || '{}');
-      const root = document.documentElement;
-      root.dataset.accentIntensity = String(typeof options.accentIntensity === 'number' ? options.accentIntensity : 50);
-      root.style.setProperty('--interface-accent-strength', String(typeof options.accentIntensity === 'number' ? options.accentIntensity : 50) + '%');
-      root.dataset.cornerRadius = ['sharp', 'soft', 'round'].includes(options.cornerRadius) ? options.cornerRadius : 'soft';
+    var apply = function (settings) {
+      var options = (settings && settings.interfaceOptions) || {};
+      var root = document.documentElement;
+      var intensity = typeof options.accentIntensity === 'number' ? options.accentIntensity : 50;
+      root.dataset.accentIntensity = String(intensity);
+      root.style.setProperty('--interface-accent-strength', intensity + '%');
+      root.dataset.cornerRadius = ['sharp', 'soft', 'round'].indexOf(options.cornerRadius) !== -1 ? options.cornerRadius : 'soft';
       root.dataset.compactMode = String(Boolean(options.compactMode));
       root.dataset.animatedTransitions = String(options.animatedTransitions !== false);
-    } catch {}
-    // Legacy palette ids ('dark-dracula', …) still resolve to their light/dark mode.
-    const stored = localStorage.getItem('bolt_theme') || '${DEFAULT_THEME}';
-    const mode = stored.startsWith('dark') ? 'dark' : 'light';
 
-    if (stored !== mode) {
-      localStorage.setItem('bolt_theme', mode);
-    }
+      var stored = (settings && settings.theme) || '${DEFAULT_THEME}';
+      var mode = String(stored).indexOf('dark') === 0 ? 'dark' : 'light';
+      document.querySelector('html')?.setAttribute('data-theme', mode);
+    };
 
-    document.querySelector('html')?.setAttribute('data-theme', mode);
+    fetch('/api/settings/shell', { credentials: 'same-origin' })
+      .then(function (response) { return response.ok ? response.json() : null; })
+      .then(function (data) { apply(data && data.settings); })
+      .catch(function () { apply(null); });
   }
 `;
 

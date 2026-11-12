@@ -3,6 +3,7 @@ import Cookies from 'js-cookie';
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { useGitLabAPI } from './useGitLabAPI';
+import { deleteConnectionFromAccount, loadConnections } from '~/lib/connections-client';
 import { gitlabConnectionStore, gitlabConnection, isGitLabConnected } from '~/lib/stores/gitlabConnection';
 import type { GitLabConnection } from '~/types/GitLab';
 
@@ -21,8 +22,6 @@ export interface UseGitLabConnectionReturn extends ConnectionState {
   testConnection: () => Promise<boolean>;
   refreshStats: () => Promise<void>;
 }
-
-const STORAGE_KEY = 'gitlab_connection';
 
 export function useGitLabConnection(options: { fetchStatsOnConnect?: boolean } = {}): UseGitLabConnectionReturn {
   const { fetchStatsOnConnect = true } = options;
@@ -55,20 +54,13 @@ export function useGitLabConnection(options: { fetchStatsOnConnect?: boolean } =
         return;
       }
 
-      // Load saved connection from localStorage
-      const savedConnection = localStorage.getItem(STORAGE_KEY);
+      // The account reports whether a connection exists; the token stays server-side.
+      const stored = (await loadConnections()).gitlab;
 
-      if (savedConnection) {
-        const parsed = JSON.parse(savedConnection);
-
-        if (parsed.user && parsed.token) {
-          // Update the store with saved connection
-          gitlabConnectionStore.setGitLabUrl(parsed.gitlabUrl || 'https://gitlab.com');
-          gitlabConnectionStore.setToken(parsed.token);
-
-          // Test the connection to make sure it's still valid
-          await refreshConnectionData(parsed);
-        }
+      if (stored?.user) {
+        gitlabConnectionStore.setGitLabUrl(
+          typeof stored.gitlabUrl === 'string' ? stored.gitlabUrl : 'https://gitlab.com',
+        );
       }
 
       setIsLoading(false);
@@ -76,9 +68,6 @@ export function useGitLabConnection(options: { fetchStatsOnConnect?: boolean } =
       console.error('Error loading saved connection:', error);
       setError('Failed to load saved connection');
       setIsLoading(false);
-
-      // Clean up corrupted data
-      localStorage.removeItem(STORAGE_KEY);
     }
   }, [connection]);
 
@@ -176,8 +165,7 @@ export function useGitLabConnection(options: { fetchStatsOnConnect?: boolean } =
   );
 
   const disconnect = useCallback(() => {
-    // Clear localStorage
-    localStorage.removeItem(STORAGE_KEY);
+    void deleteConnectionFromAccount('gitlab');
 
     // Clear all GitLab-related cookies
     Cookies.remove('gitlabToken');

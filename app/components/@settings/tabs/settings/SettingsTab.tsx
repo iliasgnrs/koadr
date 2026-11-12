@@ -2,12 +2,11 @@ import { useStore } from '@nanostores/react';
 import { motion } from 'framer-motion';
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
-import type { UserProfile } from '~/components/@settings/core/types';
 import { Card, CardContent } from '~/components/ui/Card';
 import { Switch } from '~/components/ui/Switch';
 import { getAllChats } from '~/lib/persistence/chats';
 import { openDatabase } from '~/lib/persistence/db';
-import { queueSettingsSync } from '~/lib/settings-client';
+import { applyInterfaceOptions, currentInterfaceOptions, queueSettingsSync } from '~/lib/settings-client';
 import { setTheme, themeStore } from '~/lib/stores/theme';
 import { THEMES } from '~/types/theme';
 import { classNames } from '~/utils/classNames';
@@ -27,46 +26,39 @@ const getModifierSymbol = (modifier: string): string => {
   }
 };
 
+/** Device-scoped preferences: they describe this browser, not the account. */
+interface DeviceSettings {
+  notifications: boolean;
+  language: string;
+  timezone: string;
+}
+
 export default function SettingsTab() {
   const activeTheme = useStore(themeStore);
 
-  const [interfaceOptions, setInterfaceOptions] = useState(() => {
-    const saved = JSON.parse(localStorage.getItem('bolt_interface_options') || '{}');
-    return {
-      accentIntensity: typeof saved.accentIntensity === 'number' ? saved.accentIntensity : 50,
-      cornerRadius: ['sharp', 'soft', 'round'].includes(saved.cornerRadius) ? saved.cornerRadius : 'soft',
-      compactMode: Boolean(saved.compactMode),
-      animatedTransitions: saved.animatedTransitions !== false,
-    };
-  });
+  // Seeded from the DOM, which `applyInterfaceOptions` fills from the account.
+  const [interfaceOptions, setInterfaceOptions] = useState(currentInterfaceOptions);
 
   const [currentTimezone, setCurrentTimezone] = useState('');
   const [chatStats, setChatStats] = useState({ totalChats: 0, totalMessages: 0, averageMessagesPerChat: 0 });
 
-  const [settings, setSettings] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('bolt_user_profile');
-    return saved
-      ? JSON.parse(saved)
-      : {
-          notifications: true,
-          language: 'en',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        };
-  });
+  /*
+   * Notification/language settings are applied per device (the switch only
+   * drives this browser's toast behaviour) and are not account state, so they
+   * start at their defaults instead of being persisted.
+   */
+  const [settings, setSettings] = useState<DeviceSettings>(() => ({
+    notifications: true,
+    language: 'en',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }));
 
   useEffect(() => {
     setCurrentTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('bolt_interface_options', JSON.stringify(interfaceOptions));
-
-    const root = document.documentElement;
-    root.dataset.accentIntensity = String(interfaceOptions.accentIntensity);
-    root.style.setProperty('--interface-accent-strength', `${interfaceOptions.accentIntensity}%`);
-    root.dataset.cornerRadius = interfaceOptions.cornerRadius;
-    root.dataset.compactMode = String(interfaceOptions.compactMode);
-    root.dataset.animatedTransitions = String(interfaceOptions.animatedTransitions);
+    applyInterfaceOptions(interfaceOptions);
 
     // Debounced write-through to the account, so a slider drag is one request.
     queueSettingsSync();
@@ -109,28 +101,6 @@ export default function SettingsTab() {
       database?.close();
     };
   }, []);
-
-  // Save settings automatically when they change
-  useEffect(() => {
-    try {
-      // Get existing profile data
-      const existingProfile = JSON.parse(localStorage.getItem('bolt_user_profile') || '{}');
-
-      // Merge with new settings
-      const updatedProfile = {
-        ...existingProfile,
-        notifications: settings.notifications,
-        language: settings.language,
-        timezone: settings.timezone,
-      };
-
-      localStorage.setItem('bolt_user_profile', JSON.stringify(updatedProfile));
-      toast.success('Settings updated');
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      toast.error('Failed to update settings');
-    }
-  }, [settings]);
 
   return (
     <div className="space-y-4">
@@ -226,25 +196,8 @@ export default function SettingsTab() {
             <Switch
               checked={settings.notifications}
               onCheckedChange={(checked) => {
-                // Update local state
+                // Device-local preference: no account row, no browser storage.
                 setSettings((prev) => ({ ...prev, notifications: checked }));
-
-                // Update localStorage immediately
-                const existingProfile = JSON.parse(localStorage.getItem('bolt_user_profile') || '{}');
-
-                const updatedProfile = {
-                  ...existingProfile,
-                  notifications: checked,
-                };
-                localStorage.setItem('bolt_user_profile', JSON.stringify(updatedProfile));
-
-                // Dispatch storage event for other components
-                window.dispatchEvent(
-                  new StorageEvent('storage', {
-                    key: 'bolt_user_profile',
-                    newValue: JSON.stringify(updatedProfile),
-                  }),
-                );
 
                 toast.success(`Notifications ${checked ? 'enabled' : 'disabled'}`);
               }}

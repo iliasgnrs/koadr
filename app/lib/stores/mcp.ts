@@ -1,8 +1,66 @@
 import { create } from 'zustand';
 import type { MCPConfig, MCPServerTools } from '~/lib/services/mcpService';
 
-const MCP_SETTINGS_KEY = 'mcp_settings';
-const isBrowser = typeof window !== 'undefined';
+/** The `mcp_servers` column only holds what is needed to reach each server. */
+function flattenMcpServers(config: MCPConfig) {
+  return Object.entries(config?.mcpServers ?? {}).map(([name, server]) => ({
+    name,
+    enabled: true,
+    config:
+      server.type === 'stdio' ? { type: server.type, command: server.command } : { type: server.type, url: server.url },
+  }));
+}
+
+/** Rebuild an MCPConfig from the stored server list. */
+function expandMcpServers(servers: unknown): MCPConfig | null {
+  if (!Array.isArray(servers) || servers.length === 0) {
+    return null;
+  }
+
+  const mcpServers: MCPConfig['mcpServers'] = {};
+
+  for (const entry of servers) {
+    const server = entry as { name?: unknown; config?: Record<string, unknown> };
+
+    if (typeof server.name !== 'string' || !server.config) {
+      continue;
+    }
+
+    mcpServers[server.name] = server.config as MCPConfig['mcpServers'][string];
+  }
+
+  return { mcpServers };
+}
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Mirror MCP settings to the account row.
+ *
+ * Debounced because every toggle in the config UI calls a setter, and each write
+ * is a full replace of the `editor.mcpConfig` blob. 401 (signed out) is ignored:
+ * the in-memory store still works for the session.
+ */
+function persistSettings(settings: MCPSettings) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+  }
+
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+
+    void fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mcpServers: flattenMcpServers(settings.mcpConfig) }),
+      credentials: 'same-origin',
+    }).catch(() => undefined);
+  }, 600);
+}
 
 export type ConnectorId = 'github' | 'gitlab' | 'vercel' | 'netlify' | 'supabase' | 'browserUseCloud';
 
@@ -66,30 +124,25 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       return;
     }
 
-    if (isBrowser) {
-      const savedConfig = localStorage.getItem(MCP_SETTINGS_KEY);
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/settings', { credentials: 'same-origin' });
 
-      if (savedConfig) {
-        try {
-          const savedSettings = JSON.parse(savedConfig) as Partial<MCPSettings>;
+        if (response.ok) {
+          const data = (await response.json()) as { settings?: { mcpServers?: unknown } };
+          const config = expandMcpServers(data.settings?.mcpServers);
 
-          const settings = {
-            ...defaultSettings,
-            ...savedSettings,
-            connectorEnabled: { ...defaultSettings.connectorEnabled, ...savedSettings.connectorEnabled },
-            toolEnabled: { ...defaultSettings.toolEnabled, ...savedSettings.toolEnabled },
-          };
-
-          const serverTools = await updateServerConfig(settings.mcpConfig);
-          set(() => ({ settings, serverTools }));
-        } catch (error) {
-          console.error('Error parsing saved mcp config:', error);
-          set(() => ({
-            error: `Error parsing saved mcp config: ${error instanceof Error ? error.message : String(error)}`,
-          }));
+          if (config) {
+            const settings = { ...defaultSettings, mcpConfig: { ...defaultSettings.mcpConfig, ...config } };
+            const serverTools = await updateServerConfig(settings.mcpConfig);
+            set(() => ({ settings, serverTools }));
+          }
         }
-      } else {
-        localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(defaultSettings));
+      } catch (error) {
+        console.error('Error reading saved mcp config:', error);
+        set(() => ({
+          error: `Error reading saved mcp config: ${error instanceof Error ? error.message : String(error)}`,
+        }));
       }
     }
 
@@ -105,9 +158,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
 
       const serverTools = await updateServerConfig(newSettings.mcpConfig);
 
-      if (isBrowser) {
-        localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(newSettings));
-      }
+      persistSettings(newSettings);
 
       set(() => ({ settings: newSettings, serverTools }));
     } catch (error) {
@@ -119,9 +170,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
   setWebSearchEnabled: (enabled: boolean) => {
     const settings = { ...get().settings, webSearchEnabled: enabled };
 
-    if (isBrowser) {
-      localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(settings));
-    }
+    persistSettings(settings);
 
     set({ settings });
   },
@@ -131,9 +180,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       connectorEnabled: { ...get().settings.connectorEnabled, [connector]: enabled },
     };
 
-    if (isBrowser) {
-      localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(settings));
-    }
+    persistSettings(settings);
 
     set({ settings });
   },
@@ -143,9 +190,7 @@ export const useMCPStore = create<Store & Actions>((set, get) => ({
       toolEnabled: { ...get().settings.toolEnabled, [toolName]: enabled },
     };
 
-    if (isBrowser) {
-      localStorage.setItem(MCP_SETTINGS_KEY, JSON.stringify(settings));
-    }
+    persistSettings(settings);
 
     set({ settings });
   },

@@ -20,6 +20,7 @@ import { toast } from 'react-toastify';
 import { Badge } from '~/components/ui/Badge';
 import { Button } from '~/components/ui/Button';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '~/components/ui/Collapsible';
+import { deleteConnectionFromAccount } from '~/lib/connections-client';
 import { netlifyConnection, updateNetlifyConnection, initializeNetlifyConnection } from '~/lib/stores/netlify';
 import type { NetlifySite, NetlifyDeploy, NetlifyBuild, NetlifyUser } from '~/types/netlify';
 import { classNames } from '~/utils/classNames';
@@ -443,8 +444,7 @@ export default function NetlifyConnection() {
   };
 
   const handleDisconnect = () => {
-    // Clear from localStorage
-    localStorage.removeItem('netlify_connection');
+    void deleteConnectionFromAccount('netlify');
 
     // Remove cookies
     document.cookie = 'netlifyToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';

@@ -1,15 +1,24 @@
-import { DEFAULT_INTERFACE_OPTIONS, normaliseInterfaceOptions, resolveSettings } from './settings-sync';
+import { normaliseInterfaceOptions } from './settings-sync';
+import { useMCPStore } from './stores/mcp';
+import {
+  applyEditorSettings,
+  editorSettingsPayload,
+  markProviderSettingsStored,
+  providersStore,
+} from './stores/settings';
+import { themeStore } from './stores/theme';
+import { useToolAccessStore, type ToolAccessMode } from './stores/toolAccess';
 
 /*
  * Client half of settings sync.
  *
- * localServerStorage stays the source of truth for rendering — the app must work
- * before any network call settles — and the server is reconciled once per page
- * load. Writes are debounced because the settings tab fires on every slider
- * drag, and a request per drag event would be both wasteful and racy.
+ * The account is the single source of truth: theme, interface options, provider
+ * settings, editor flags, MCP servers and the tool mode all live on the server
+ * row, and nothing is persisted in the browser. Writes are debounced because the
+ * settings tab fires on every slider drag, and a request per drag event would be
+ * both wasteful and racy.
  */
 
-const LOCAL_OPTIONS_KEY = 'bolt_interface_options';
 const WRITE_DEBOUNCE_MS = 800;
 
 let pendingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -34,21 +43,18 @@ export function endApplyingRemote() {
   applyingRemote = false;
 }
 
-function readLocal() {
-  let theme: string | null = null;
-  let options: unknown = null;
+function readProviderSettings(): Record<string, { settings: unknown }> | null {
+  const providers = providersStore.get();
+  const names = Object.keys(providers);
 
-  try {
-    theme = localStorage.getItem('bolt_theme');
-    options = JSON.parse(localStorage.getItem(LOCAL_OPTIONS_KEY) || '{}');
-  } catch {
-    // Unreadable storage is treated as "nothing saved".
+  if (names.length === 0) {
+    return null;
   }
 
-  return { theme, interfaceOptions: normaliseInterfaceOptions(options) };
+  return Object.fromEntries(names.map((name) => [name, { settings: providers[name].settings }]));
 }
 
-/** Push the current theme and options to the server, coalescing bursts. */
+/** Push the current values to the server, coalescing bursts. */
 export function queueSettingsSync() {
   if (applyingRemote) {
     return;
@@ -73,35 +79,70 @@ export function queueSettingsSync() {
 }
 
 async function pushNow() {
-  const { theme, interfaceOptions } = readLocal();
-
-  if (!theme) {
-    return;
-  }
+  const theme = themeStore.get();
+  const interfaceOptions = currentInterfaceOptions();
+  const providerSettings = readProviderSettings();
 
   try {
     await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme, interfaceOptions }),
+      body: JSON.stringify({
+        theme,
+        interfaceOptions,
+        editor: editorSettingsPayload(),
+        ...(providerSettings ? { providerSettings } : {}),
+      }),
       credentials: 'same-origin',
     });
   } catch {
     /*
-     * Offline or signed out. The local copy is already up to date, and the next
-     * successful sync will reconcile, so a failed push is not worth surfacing.
+     * Offline or signed out. The next successful load re-reads the account, so a
+     * failed push is not worth surfacing.
      */
   }
+}
+
+/** Interface options as last applied to the document (see applyInterfaceOptions). */
+export function currentInterfaceOptions() {
+  if (typeof document === 'undefined') {
+    return normaliseInterfaceOptions({});
+  }
+
+  const root = document.documentElement;
+
+  return normaliseInterfaceOptions({
+    accentIntensity: Number(root.dataset.accentIntensity),
+    cornerRadius: root.dataset.cornerRadius,
+    compactMode: root.dataset.compactMode === 'true',
+    animatedTransitions: root.dataset.animatedTransitions !== 'false',
+  });
 }
 
 /**
  * Reconcile this device with the account. Called once after the first paint of an
  * authenticated session.
  *
- * Returns the settings that were applied, or null when nothing changed.
+ * The account is the only source: nothing is read from or written to
+ * localStorage, so a fresh browser, a phone or an incognito window all render
+ * the same values. Returns what was applied, or null when the account could not
+ * be read.
  */
-export async function syncSettingsFromServer(): Promise<{ theme: string } | null> {
-  let remote = null;
+export async function syncSettingsFromServer(): Promise<{
+  theme?: string;
+  interfaceOptions?: unknown;
+  providerSettings?: unknown;
+  editor?: Record<string, unknown>;
+  toolAccess?: ToolAccessMode;
+} | null> {
+  let remote: {
+    theme?: string | null;
+    interfaceOptions?: unknown;
+    providerSettings?: unknown;
+    editor?: unknown;
+    mcpServers?: unknown;
+    toolAccess?: unknown;
+  } | null = null;
 
   try {
     const response = await fetch('/api/settings', { credentials: 'same-origin' });
@@ -116,48 +157,48 @@ export async function syncSettingsFromServer(): Promise<{ theme: string } | null
     return null;
   }
 
-  const local = readLocal();
+  const { DEFAULT_THEME } = await import('~/lib/stores/theme');
+  const { normaliseTheme } = await import('~/types/theme');
+
+  const applied: {
+    theme: string;
+    interfaceOptions?: unknown;
+    providerSettings?: unknown;
+    editor?: Record<string, unknown>;
+    toolAccess?: ToolAccessMode;
+  } = {
+    theme: remote?.theme ? normaliseTheme(remote.theme) : DEFAULT_THEME,
+    interfaceOptions: normaliseInterfaceOptions(remote?.interfaceOptions),
+  };
 
   /*
-   * A brand-new account has no saved theme here at all. In that case the account
-   * is authoritative and the app should land on the default rather than keep
-   * whatever a previous visitor left in this browser.
+   * Enabled providers live on the account, so the local store is replaced rather
+   * than merged: a provider disabled on one device must not stay enabled here.
    */
-  if (!local.theme) {
-    const { DEFAULT_THEME } = await import('~/lib/stores/theme');
-
-    return { theme: DEFAULT_THEME };
+  if (remote?.providerSettings) {
+    applied.providerSettings = remote.providerSettings;
+    markProviderSettingsStored(Object.keys(remote.providerSettings).length > 0);
   }
-
-  const decision = resolveSettings(
-    { theme: local.theme as never, interfaceOptions: local.interfaceOptions, hasStoredTheme: true },
-    remote,
-  );
-
-  if (decision.action === 'push-local') {
-    queueSettingsSync();
-
-    return null;
-  }
-
-  const { theme, interfaceOptions } = decision.settings;
 
   /*
-   * Write straight to storage and let the existing stores pick it up, rather
-   * than calling setTheme() — that would immediately queue another push and
-   * ping-pong the value between devices.
+   * Editor flags, MCP servers and the tool mode have no local copy: the account
+   * is their only home, so they are applied straight to their stores.
    */
+  applied.editor = (remote?.editor ?? {}) as Record<string, unknown>;
+  applyEditorSettings(applied.editor);
 
-  try {
-    localStorage.setItem('bolt_theme', theme);
-    localStorage.setItem(LOCAL_OPTIONS_KEY, JSON.stringify(interfaceOptions));
-  } catch {
-    return null;
+  if (remote?.toolAccess === 'full-access' || remote?.toolAccess === 'ask-for-all') {
+    useToolAccessStore.getState().hydrate(remote.toolAccess);
+    applied.toolAccess = remote.toolAccess;
   }
 
-  applyInterfaceOptions(interfaceOptions);
+  if (Array.isArray(remote?.mcpServers) && remote.mcpServers.length > 0) {
+    void useMCPStore.getState().initialize();
+  }
 
-  return { theme };
+  queueSettingsSync();
+
+  return applied;
 }
 
 /** Mirrors what SettingsTab does on every change, so sync and UI agree. */
@@ -171,8 +212,6 @@ export function applyInterfaceOptions(options: unknown) {
   root.dataset.compactMode = String(normalised.compactMode);
   root.dataset.animatedTransitions = String(normalised.animatedTransitions);
 }
-
-export { DEFAULT_INTERFACE_OPTIONS };
 
 /**
  * Mirror a provider key to the account.

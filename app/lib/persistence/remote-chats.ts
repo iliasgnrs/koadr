@@ -148,3 +148,39 @@ export async function writeRemoteChatLocally(database: IDBDatabase, chat: Remote
     transaction.onerror = () => reject(transaction.error);
   });
 }
+
+/** Save the chat's project snapshot; it follows the account like history does. */
+export async function pushChatSnapshot(chatId: string, snapshot: unknown): Promise<void> {
+  try {
+    await fetch('/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat: { id: chatId, snapshot } }),
+      credentials: 'same-origin',
+    });
+  } catch {
+    // Offline: the IndexedDB copy still has it for this browser.
+  }
+}
+
+/**
+ * Read the account's snapshot for a chat.
+ *
+ * Returns `undefined` when the account has none, so the caller can fall back to
+ * its cached copy.
+ */
+export async function fetchChatSnapshot(chatId: string): Promise<unknown | undefined> {
+  try {
+    const response = await fetch(`/api/chats?snapshot=${encodeURIComponent(chatId)}`, { credentials: 'same-origin' });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const data = (await response.json()) as { snapshot?: unknown };
+
+    return data.snapshot ?? undefined;
+  } catch {
+    return undefined;
+  }
+}

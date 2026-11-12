@@ -1,4 +1,5 @@
 import { getMessages, getSnapshot } from './db';
+import { fetchChatSnapshot } from './remote-chats';
 import type { Snapshot } from './types';
 
 type ChatHistoryItem = Awaited<ReturnType<typeof getMessages>>;
@@ -46,6 +47,11 @@ export async function getCachedMessages(database: IDBDatabase, id: string): Prom
 /**
  * Get snapshot, using the cached promise if available from prefetch.
  */
+/*
+ * Snapshot lookup: the account copy wins, because IndexedDB is only this
+ * browser's cache. A chat created on another device has its files there and
+ * nowhere else, so falling back to the local DB covers the offline case.
+ */
 export async function getCachedSnapshot(database: IDBDatabase, id: string): Promise<Snapshot | undefined> {
   const cached = snapshotCache.get(id);
 
@@ -53,7 +59,8 @@ export async function getCachedSnapshot(database: IDBDatabase, id: string): Prom
     return cached;
   }
 
-  const promise = getSnapshot(database, id);
+  const promise = fetchChatSnapshot(id).then((remote) => (remote as Snapshot | undefined) ?? getSnapshot(database, id));
+
   snapshotCache.set(id, promise);
 
   return promise;

@@ -35,7 +35,7 @@ export const DEFAULT_INTERFACE_OPTIONS: InterfaceOptions = {
 const CORNER_RADII = ['sharp', 'soft', 'round'] as const;
 
 /**
- * Normalise whatever is in localStorage (or the database) into a complete
+ * Normalise whatever the database or a migration payload holds into a complete
  * InterfaceOptions. Missing or malformed fields fall back per-field rather than
  * discarding the whole object, so one bad value cannot wipe a user's layout.
  */
@@ -53,10 +53,18 @@ export function normaliseInterfaceOptions(saved: unknown): InterfaceOptions {
 }
 
 /**
- * Any stored theme is acceptable: legacy palette ids are migrated onto their
- * light/dark mode rather than rejected, so an old account cannot lose its mode.
+ * The two modes the app renders.
  */
 export function isKnownTheme(value: unknown): value is string {
+  return value === 'light' || value === 'dark';
+}
+
+/**
+ * Widest accepted theme on read: anything non-empty is migrated onto a mode by
+ * `normaliseTheme`, so an account carrying a legacy palette id keeps its mode
+ * instead of silently reverting to the default.
+ */
+export function isStoredTheme(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
 }
 
@@ -82,10 +90,91 @@ export function resolveSettings(
   return {
     action: 'apply-remote',
     settings: {
-      theme: isKnownTheme(remote.theme) ? normaliseTheme(remote.theme) : local.theme,
+      theme: isStoredTheme(remote.theme) ? normaliseTheme(remote.theme) : local.theme,
       interfaceOptions: remote.interfaceOptions
         ? normaliseInterfaceOptions(remote.interfaceOptions)
         : local.interfaceOptions,
     },
   };
+}
+
+/** Returned by `normaliseProviderSettings` for a value that must be rejected. */
+export const INVALID_PROVIDER_SETTINGS = Symbol('invalid-provider-settings');
+
+/*
+ * What an account stores per provider. It is deliberately a whitelist: the
+ * local entry also holds model lists fetched at runtime, and syncing those
+ * would overwrite a fresh list with a stale one on every device.
+ */
+const PROVIDER_SETTING_FIELDS = [
+  'enabled',
+  'baseUrl',
+  'selectedModel',
+  'model',
+  'contextWindow',
+  'maxTokenAllowed',
+] as const;
+
+const PROVIDER_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const MAX_PROVIDERS = 100;
+
+/**
+ * Sanitize provider settings coming from a client or from the database.
+ *
+ * Returns `undefined` when nothing was sent (upsert leaves the column alone),
+ * `INVALID_PROVIDER_SETTINGS` when the payload is not a provider map, and
+ * otherwise the field-whitelisted copy.
+ *
+ * Provider API keys are intentionally not accepted here: they live encrypted in
+ * `api_keys`, and a plaintext key in this column would defeat that.
+ */
+export function normaliseProviderSettings(
+  value: unknown,
+): Record<string, unknown> | undefined | typeof INVALID_PROVIDER_SETTINGS {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return INVALID_PROVIDER_SETTINGS;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>).slice(0, MAX_PROVIDERS);
+
+  if (entries.some(([name]) => !PROVIDER_NAME_PATTERN.test(name))) {
+    return INVALID_PROVIDER_SETTINGS;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  for (const [name, entry] of entries) {
+    const settings = (entry as { settings?: unknown } | null)?.settings;
+
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      continue;
+    }
+
+    const raw = settings as Record<string, unknown>;
+    const kept: Record<string, unknown> = {};
+
+    for (const field of PROVIDER_SETTING_FIELDS) {
+      const fieldValue = raw[field];
+
+      if (fieldValue === undefined) {
+        continue;
+      }
+
+      if (typeof fieldValue === 'string') {
+        kept[field] = fieldValue.slice(0, 2048);
+      } else if (typeof fieldValue === 'boolean' || typeof fieldValue === 'number') {
+        kept[field] = fieldValue;
+      }
+    }
+
+    if (Object.keys(kept).length > 0) {
+      result[name] = { settings: kept };
+    }
+  }
+
+  return result;
 }

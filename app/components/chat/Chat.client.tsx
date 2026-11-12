@@ -34,6 +34,7 @@ import { callProjectMcpTool, PROJECT_TOOL_NAMES } from '~/lib/runtime/projectMcp
 import { chatStore } from '~/lib/stores/chat';
 import { logStore } from '~/lib/stores/logs';
 import { useMCPStore } from '~/lib/stores/mcp';
+import { consumePendingZipAutorun } from '~/lib/stores/pendingInput';
 import { usePluginStore } from '~/lib/stores/plugins';
 import { streamingState } from '~/lib/stores/streaming';
 import { supabaseConnection } from '~/lib/stores/supabase';
@@ -727,10 +728,10 @@ export const ChatImpl = memo(
         return;
       }
 
-      const autorun = localStorage.getItem('bolt_zip_autorun');
+      // Zip import prompts are handed over in memory, not through the browser.
+      const autorun = consumePendingZipAutorun();
 
       if (autorun) {
-        localStorage.removeItem('bolt_zip_autorun');
         setInput(autorun);
       }
     }, []);

@@ -3,6 +3,7 @@ import Cookies from 'js-cookie';
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { useGitHubAPI } from './useGitHubAPI';
+import { deleteConnectionFromAccount } from '~/lib/connections-client';
 import { githubConnection, isConnecting, updateGitHubConnection } from '~/lib/stores/github';
 import type { GitHubUserResponse, GitHubConnection } from '~/types/GitHub';
 
@@ -21,8 +22,6 @@ export interface UseGitHubConnectionReturn extends ConnectionState {
   refreshConnection: () => Promise<void>;
   testConnection: () => Promise<boolean>;
 }
-
-const STORAGE_KEY = 'github_connection';
 
 export function useGitHubConnection(): UseGitHubConnectionReturn {
   const connection = useStore(githubConnection);
@@ -59,9 +58,6 @@ export function useGitHubConnection(): UseGitHubConnectionReturn {
       console.error('Error loading saved connection:', error);
       setError('Failed to load saved connection');
       setIsLoading(false);
-
-      // Clean up corrupted data
-      localStorage.removeItem(STORAGE_KEY);
     }
   }, [connection]);
 
@@ -167,8 +163,7 @@ export function useGitHubConnection(): UseGitHubConnectionReturn {
   }, []);
 
   const disconnect = useCallback(() => {
-    // Clear localStorage
-    localStorage.removeItem(STORAGE_KEY);
+    void deleteConnectionFromAccount('github');
 
     // Clear all GitHub-related cookies
     Cookies.remove('githubToken');

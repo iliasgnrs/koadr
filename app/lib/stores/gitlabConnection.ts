@@ -1,5 +1,6 @@
 import Cookies from 'js-cookie';
 import { atom, computed } from 'nanostores';
+import { loadConnections, saveConnectionToAccount, deleteConnectionFromAccount } from '~/lib/connections-client';
 import { GitLabApiService } from '~/lib/services/gitlabApiService';
 import { logStore } from '~/lib/stores/logs';
 import type { GitLabConnection, GitLabStats } from '~/types/GitLab';
@@ -16,33 +17,32 @@ const gitlabConnectionAtom = atom<GitLabConnection>({
 
 const gitlabUrlAtom = atom('https://gitlab.com');
 
-// Initialize connection from localStorage on startup
-function initializeConnection() {
-  try {
-    const savedConnection = localStorage.getItem('gitlab_connection');
+/*
+ * Connection data lives encrypted on the account. On load only the non-secret
+ * summary (user, instance URL) comes back, so the UI can show "connected" while
+ * the token itself stays server-side.
+ */
+export async function hydrateGitLabConnection(): Promise<void> {
+  const stored = (await loadConnections()).gitlab;
 
-    if (savedConnection) {
-      const parsed = JSON.parse(savedConnection);
-      parsed.tokenType = 'personal-access-token';
-
-      if (parsed.gitlabUrl) {
-        gitlabUrlAtom.set(parsed.gitlabUrl);
-      }
-
-      // Only set if we have a valid user
-      if (parsed.user) {
-        gitlabConnectionAtom.set(parsed);
-      }
-    }
-  } catch (error) {
-    console.error('Error initializing GitLab connection:', error);
-    localStorage.removeItem('gitlab_connection');
+  if (!stored) {
+    return;
   }
-}
 
-// Initialize on module load (client-side only)
-if (typeof window !== 'undefined') {
-  initializeConnection();
+  if (typeof stored.gitlabUrl === 'string') {
+    gitlabUrlAtom.set(stored.gitlabUrl);
+  }
+
+  const current = gitlabConnectionAtom.get();
+
+  if (stored.user) {
+    gitlabConnectionAtom.set({
+      ...current,
+      user: stored.user as GitLabConnection['user'],
+      tokenType: 'personal-access-token',
+      gitlabUrl: typeof stored.gitlabUrl === 'string' ? stored.gitlabUrl : current.gitlabUrl,
+    });
+  }
 }
 
 // Computed store for checking if connected
@@ -82,16 +82,12 @@ class GitLabConnectionStore {
       Cookies.set('git:gitlab.com', JSON.stringify({ username: user.username, password: token }));
       Cookies.set('gitlabUrl', gitlabUrl);
 
-      // Store connection details in localStorage
-      localStorage.setItem(
-        'gitlab_connection',
-        JSON.stringify({
-          user,
-          token,
-          tokenType: 'personal-access-token',
-          gitlabUrl,
-        }),
-      );
+      void saveConnectionToAccount('gitlab', {
+        user: user as unknown as Record<string, unknown>,
+        token,
+        tokenType: 'personal-access-token',
+        gitlabUrl,
+      });
 
       logStore.logInfo('Connected to GitLab', {
         type: 'system',
@@ -148,10 +144,6 @@ class GitLabConnectionStore {
         stats,
       });
 
-      // Update localStorage
-      const updatedConnection = { ...connection, stats };
-      localStorage.setItem('gitlab_connection', JSON.stringify(updatedConnection));
-
       return { success: true, stats };
     } catch (error) {
       console.error('Error fetching GitLab stats:', error);
@@ -169,8 +161,7 @@ class GitLabConnectionStore {
     Cookies.remove('git:gitlab.com');
     Cookies.remove('gitlabUrl');
 
-    // Clear localStorage
-    localStorage.removeItem('gitlab_connection');
+    void deleteConnectionFromAccount('gitlab');
 
     // Reset state
     gitlabConnectionAtom.set({
@@ -186,27 +177,7 @@ class GitLabConnectionStore {
   }
 
   loadSavedConnection() {
-    try {
-      const savedConnection = localStorage.getItem('gitlab_connection');
-
-      if (savedConnection) {
-        const parsed = JSON.parse(savedConnection);
-        parsed.tokenType = 'personal-access-token';
-
-        // Set GitLab URL if saved
-        if (parsed.gitlabUrl) {
-          gitlabUrlAtom.set(parsed.gitlabUrl);
-        }
-
-        // Set connection
-        gitlabConnectionAtom.set(parsed);
-
-        return parsed;
-      }
-    } catch (error) {
-      console.error('Error parsing saved GitLab connection:', error);
-      localStorage.removeItem('gitlab_connection');
-    }
+    void hydrateGitLabConnection();
 
     return null;
   }
@@ -247,16 +218,12 @@ class GitLabConnectionStore {
       Cookies.set('git:gitlab.com', JSON.stringify({ username: user.username, password: envToken }));
       Cookies.set('gitlabUrl', 'https://gitlab.com');
 
-      // Store connection details in localStorage
-      localStorage.setItem(
-        'gitlab_connection',
-        JSON.stringify({
-          user,
-          token: envToken,
-          tokenType: 'personal-access-token',
-          gitlabUrl: 'https://gitlab.com',
-        }),
-      );
+      void saveConnectionToAccount('gitlab', {
+        user: user as unknown as Record<string, unknown>,
+        token: envToken,
+        tokenType: 'personal-access-token',
+        gitlabUrl: 'https://gitlab.com',
+      });
 
       logStore.logInfo('Auto-connected to GitLab', {
         type: 'system',

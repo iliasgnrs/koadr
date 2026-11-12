@@ -1,5 +1,6 @@
 import Cookies from 'js-cookie';
 import { atom, computed } from 'nanostores';
+import { loadConnections, saveConnectionToAccount, deleteConnectionFromAccount } from '~/lib/connections-client';
 import { gitHubApiService } from '~/lib/services/githubApiService';
 import { logStore } from '~/lib/stores/logs';
 import type { GitHubConnection } from '~/types/GitHub';
@@ -18,33 +19,30 @@ const githubConnectionAtom = atom<GitHubConnection>({
       : 'classic',
 });
 
-// Initialize connection from localStorage on startup
-function initializeConnection() {
-  try {
-    const savedConnection = localStorage.getItem('github_connection');
+/*
+ * The connection (token included) lives encrypted on the account. The token is
+ * only held in memory for the session, so a shared machine does not keep a
+ * usable credential after sign-out; `hydrateFromAccount` reports whether a
+ * connection exists so the UI can ask the user to reconnect.
+ */
+export const githubConnectionHydrated = atom(false);
 
-    if (savedConnection) {
-      const parsed = JSON.parse(savedConnection);
+export async function hydrateGitHubConnection(): Promise<void> {
+  const stored = (await loadConnections()).github;
 
-      // Ensure tokenType is set
-      if (!parsed.tokenType) {
-        parsed.tokenType = 'classic';
-      }
+  githubConnectionHydrated.set(true);
 
-      // Only set if we have a valid user
-      if (parsed.user) {
-        githubConnectionAtom.set(parsed);
-      }
-    }
-  } catch (error) {
-    console.error('Error initializing GitHub connection:', error);
-    localStorage.removeItem('github_connection');
+  if (!stored) {
+    return;
   }
-}
 
-// Initialize on module load (client-side only)
-if (typeof window !== 'undefined') {
-  initializeConnection();
+  const current = githubConnectionAtom.get();
+
+  githubConnectionAtom.set({
+    ...current,
+    user: (stored.user as GitHubConnection['user']) ?? current.user,
+    tokenType: (stored.tokenType as GitHubConnection['tokenType']) ?? 'classic',
+  });
 }
 
 // Computed store for checking if connected
@@ -93,8 +91,11 @@ export const githubConnectionStore = {
       Cookies.set('githubToken', token);
       Cookies.set('git:github.com', JSON.stringify({ username: token, password: 'x-oauth-basic' }));
 
-      // Store connection details in localStorage
-      localStorage.setItem('github_connection', JSON.stringify(connection));
+      void saveConnectionToAccount('github', {
+        user: user as unknown as Record<string, unknown>,
+        token,
+        tokenType,
+      });
 
       // Update atom
       githubConnectionAtom.set(connection);
@@ -129,8 +130,7 @@ export const githubConnectionStore = {
       tokenType: 'classic',
     });
 
-    // Clear localStorage
-    localStorage.removeItem('github_connection');
+    void deleteConnectionFromAccount('github');
 
     // Clear cookies
     Cookies.remove('githubUsername');
@@ -169,9 +169,6 @@ export const githubConnectionStore = {
         stats,
       };
 
-      // Update localStorage
-      localStorage.setItem('github_connection', JSON.stringify(updatedConnection));
-
       // Update atom
       githubConnectionAtom.set(updatedConnection);
 
@@ -207,7 +204,7 @@ export const githubConnectionStore = {
     };
 
     githubConnectionAtom.set(updatedConnection);
-    localStorage.setItem('github_connection', JSON.stringify(updatedConnection));
+    void saveConnectionToAccount('github', { tokenType });
   },
 
   // Clear stats cache

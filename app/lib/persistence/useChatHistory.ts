@@ -16,7 +16,7 @@ import {
   type IChatMetadata,
 } from './db';
 import { createMessage, getMessageAnnotations, hasMessageFlag, type AnyPart } from './messageMigration';
-import { queueChatSave } from './remote-chats';
+import { pushChatSnapshot, queueChatSave } from './remote-chats';
 import type { Snapshot } from './types';
 import type { FileMap } from '~/lib/stores/files';
 import { logStore } from '~/lib/stores/logs'; // Import logStore
@@ -448,9 +448,9 @@ ${value.content}
         summary: chatSummary,
       };
 
-      // localStorage.setItem(`snapshot:${id}`, JSON.stringify(snapshot)); // Remove localStorage usage
       try {
         await setSnapshot(db, chatRecordId, snapshot);
+        void pushChatSnapshot(chatRecordId, snapshot);
       } catch (error) {
         console.error('Failed to save snapshot:', error);
         toast.error('Failed to save chat snapshot.');

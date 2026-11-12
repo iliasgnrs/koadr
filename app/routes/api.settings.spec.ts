@@ -130,7 +130,7 @@ describe('/api/settings', () => {
 
   it('upserts with the session profile id and a fresh timestamp', async () => {
     const { response } = await runAction(user, {
-      theme: 'light-nord',
+      theme: 'dark',
       interfaceOptions: { accentIntensity: 70 },
     });
 
@@ -140,7 +140,7 @@ describe('/api/settings', () => {
 
     expect(options).toEqual({ onConflict: 'profile_id' });
     expect(row.profile_id).toBe(user.id);
-    expect(row.theme).toBe('light-nord');
+    expect(row.theme).toBe('dark');
     expect(row.interface_options.accentIntensity).toBe(70);
     expect(typeof row.updated_at).toBe('string');
   });
@@ -152,6 +152,45 @@ describe('/api/settings', () => {
 
     // RLS would block this anyway, but the route must not even offer it.
     expect(db.upsert.mock.calls[0][0].profile_id).toBe(user.id);
+  });
+
+  it('persists the sanitized provider map with the rest of the row', async () => {
+    const { response } = await runAction(user, {
+      theme: 'light',
+      providerSettings: {
+        OpenAI: { settings: { enabled: true, models: ['runtime-only'] } },
+        Anthropic: { settings: { enabled: false } },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(db.upsert.mock.calls[0][0].provider_settings).toEqual({
+      OpenAI: { settings: { enabled: true } },
+      Anthropic: { settings: { enabled: false } },
+    });
+  });
+
+  it('rejects a provider map with invalid keys', async () => {
+    const { response } = await runAction(user, { providerSettings: { 'bad name!': { settings: {} } } });
+
+    expect(response.status).toBe(400);
+    expect(db.upsert).not.toHaveBeenCalled();
+  });
+
+  it('returns the stored provider map on read', async () => {
+    db.maybeSingle.mockResolvedValue({
+      data: {
+        theme: 'light',
+        interface_options: null,
+        provider_settings: { OpenAI: { settings: { enabled: true } } },
+        updated_at: 'x',
+      },
+      error: null,
+    });
+
+    const { json } = await runLoader(user);
+
+    expect(json.settings.providerSettings).toEqual({ OpenAI: { settings: { enabled: true } } });
   });
 
   it('rejects malformed JSON', async () => {

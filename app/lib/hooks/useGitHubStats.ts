@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import { gitHubApiService } from '~/lib/services/githubApiService';
+import { updateGitHubConnection } from '~/lib/stores/github';
 import type { GitHubStats, GitHubConnection } from '~/types/GitHub';
 
 export interface UseGitHubStatsState {
@@ -205,13 +206,12 @@ export function useGitHubStats(
       // Cache the stats
       saveCachedStats(stats, connection.user.login);
 
-      // Update the connection object with stats if needed
+      // Stats stay in the in-memory store and the (disposable) stats cache.
       if (connection.stats?.lastUpdated !== stats.lastUpdated) {
-        const updatedConnection = {
+        updateGitHubConnection({
           ...connection,
           stats,
-        };
-        localStorage.setItem('github_connection', JSON.stringify(updatedConnection));
+        });
       }
 
       // Only show success toast for manual refreshes, not auto-fetches

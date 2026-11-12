@@ -3,6 +3,7 @@ import React, { useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import { Button } from '~/components/ui/Button';
 import { logStore } from '~/lib/stores/logs';
+import { setPendingZipAutorun } from '~/lib/stores/pendingInput';
 import { classNames } from '~/utils/classNames';
 import { createChatFromZip } from '~/utils/zipImport';
 
@@ -48,12 +49,11 @@ export const ImportZipButton: React.FC<ImportZipButtonProps> = ({ className, imp
            * Expo/React Native - WebContainer can't run native code.
            * Ask bolt to review the code instead of trying to boot the project.
            */
-          localStorage.setItem(
-            'bolt_zip_autorun',
+          setPendingZipAutorun(
             'This is an Expo/React Native project. Review the code structure and give me a summary of what the app does and how it is organized. Do not run any install or dev server commands - I will run this locally with Expo CLI.',
           );
         } else if (result.hasPackageJson) {
-          localStorage.setItem('bolt_zip_autorun', 'Install the dependencies and start the development server.');
+          setPendingZipAutorun('Install the dependencies and start the development server.');
         }
 
         await importChat(file.name.replace(/\.zip$/i, ''), result.messages);

@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { formatBuildFailureOutput } from './deployUtils';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { chatId } from '~/lib/persistence/useChatHistory';
 import type { ActionCallbackData } from '~/lib/runtime/message-parser';
 import { netlifyConnection } from '~/lib/stores/netlify';
@@ -13,6 +14,7 @@ export function useNetlifyDeploy() {
   const [isDeploying, setIsDeploying] = useState(false);
   const netlifyConn = useStore(netlifyConnection);
   const currentChatId = useStore(chatId);
+  const siteIdTarget = useDeploymentTarget(currentChatId, 'netlifySiteId');
 
   const handleNetlifyDeploy = async () => {
     if (!netlifyConn.user || !netlifyConn.token) {
@@ -141,7 +143,7 @@ export function useNetlifyDeploy() {
       const fileContents = await getAllFiles(finalBuildPath);
 
       // Use chatId instead of artifact.id
-      const existingSiteId = localStorage.getItem(`netlify-site-${currentChatId}`);
+      const existingSiteId = siteIdTarget.value as string | undefined;
 
       const response = await fetch('/api/netlify-deploy', {
         method: 'POST',
@@ -220,7 +222,7 @@ export function useNetlifyDeploy() {
 
       // Store the site ID if it's a new site
       if (data.site) {
-        localStorage.setItem(`netlify-site-${currentChatId}`, data.site.id);
+        siteIdTarget.set(data.site.id);
       }
 
       // Notify that deployment completed successfully

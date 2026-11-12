@@ -1,53 +1,17 @@
 import { atom } from 'nanostores';
 import { toast } from 'react-toastify';
 import { logStore } from './logs';
+import { saveConnectionToAccount } from '~/lib/connections-client';
 import type { VercelConnection } from '~/types/vercel';
 
 // Auto-connect using environment variable
 const envToken = import.meta.env?.VITE_VERCEL_ACCESS_TOKEN;
 
-// Initialize with stored connection or defaults
-const storedConnection = typeof window !== 'undefined' ? localStorage.getItem('vercel_connection') : null;
-
-let initialConnection: VercelConnection;
-
-if (storedConnection) {
-  try {
-    const parsed = JSON.parse(storedConnection);
-
-    // If we have a stored connection but no user and no token, clear it and use env token
-    if (!parsed.user && !parsed.token && envToken) {
-      console.log('Vercel store: Clearing incomplete saved connection, using env token');
-
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('vercel_connection');
-      }
-
-      initialConnection = {
-        user: null,
-        token: envToken,
-        stats: undefined,
-      };
-    } else {
-      initialConnection = parsed;
-    }
-  } catch (error) {
-    console.error('Error parsing saved Vercel connection:', error);
-    initialConnection = {
-      user: null,
-      token: envToken || '',
-      stats: undefined,
-    };
-  }
-} else {
-  initialConnection = {
-    user: null,
-    token: envToken || '',
-    stats: undefined,
-  };
-}
-
-export const vercelConnection = atom<VercelConnection>(initialConnection);
+/*
+ * The connection lives encrypted on the account; only the environment token is
+ * available to a fresh session without a round-trip.
+ */
+export const vercelConnection = atom<VercelConnection>({ user: null, token: envToken || '', stats: undefined });
 export const isConnecting = atom<boolean>(false);
 export const isFetchingStats = atom<boolean>(false);
 
@@ -56,9 +20,12 @@ export const updateVercelConnection = (updates: Partial<VercelConnection>) => {
   const newState = { ...currentState, ...updates };
   vercelConnection.set(newState);
 
-  // Persist to localStorage
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('vercel_connection', JSON.stringify(newState));
+  // A token-less update (stats) must not overwrite the stored credential.
+  if (newState.token) {
+    void saveConnectionToAccount('vercel', {
+      user: newState.user as unknown as Record<string, unknown>,
+      token: newState.token,
+    });
   }
 };
 

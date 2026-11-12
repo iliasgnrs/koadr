@@ -1,3 +1,4 @@
+import { getConnectionSecret } from '~/lib/.server/connections';
 import { getApiKeysForRequest } from '~/lib/api/cookies';
 import { getUser } from '~/lib/auth-guard';
 import { withSecurity } from '~/lib/security';
@@ -6,10 +7,20 @@ async function githubUserLoader({ request, context }: { request: Request; contex
   try {
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
+    const userId = getUser(context)?.id;
+    const apiKeys = await getApiKeysForRequest(cookieHeader, userId);
+
+    /*
+     * The connection saved through /api/connections wins: the browser no longer
+     * holds a GitHub token, so this is how a stored connection reaches GitHub.
+     */
+    const storedToken = userId
+      ? ((await getConnectionSecret(userId, 'github'))?.token as string | undefined)
+      : undefined;
 
     // Try to get GitHub token from various sources
     const githubToken =
+      storedToken ||
       apiKeys.GITHUB_API_KEY ||
       apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
       context?.cloudflare?.env?.GITHUB_TOKEN ||
@@ -96,10 +107,20 @@ async function githubUserAction({ request, context }: { request: Request; contex
 
     // Get API keys from cookies (server-side only)
     const cookieHeader = request.headers.get('Cookie');
-    const apiKeys = await getApiKeysForRequest(cookieHeader, getUser(context)?.id);
+    const userId = getUser(context)?.id;
+    const apiKeys = await getApiKeysForRequest(cookieHeader, userId);
+
+    /*
+     * The connection saved through /api/connections wins: the browser no longer
+     * holds a GitHub token, so this is how a stored connection reaches GitHub.
+     */
+    const storedToken = userId
+      ? ((await getConnectionSecret(userId, 'github'))?.token as string | undefined)
+      : undefined;
 
     // Try to get GitHub token from various sources
     const githubToken =
+      storedToken ||
       apiKeys.GITHUB_API_KEY ||
       apiKeys.VITE_GITHUB_ACCESS_TOKEN ||
       context?.cloudflare?.env?.GITHUB_TOKEN ||

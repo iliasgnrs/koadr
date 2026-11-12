@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_INTERFACE_OPTIONS,
+  INVALID_PROVIDER_SETTINGS,
   isKnownTheme,
+  isStoredTheme,
   normaliseInterfaceOptions,
+  normaliseProviderSettings,
   resolveSettings,
   type InterfaceOptions,
 } from './settings-sync';
@@ -38,11 +41,21 @@ describe('normaliseInterfaceOptions', () => {
 });
 
 describe('isKnownTheme', () => {
-  it('accepts any stored theme string so legacy palettes can be migrated', () => {
+  it('accepts only the two modes the app renders', () => {
     expect(isKnownTheme('dark')).toBe(true);
-    expect(isKnownTheme('dark-halloween-harvest')).toBe(true);
+    expect(isKnownTheme('light')).toBe(true);
+    expect(isKnownTheme('dark-halloween-harvest')).toBe(false);
     expect(isKnownTheme(null)).toBe(false);
     expect(isKnownTheme(42)).toBe(false);
+  });
+});
+
+describe('isStoredTheme', () => {
+  it('accepts any stored theme string so legacy palettes can be migrated', () => {
+    expect(isStoredTheme('dark')).toBe(true);
+    expect(isStoredTheme('dark-halloween-harvest')).toBe(true);
+    expect(isStoredTheme('')).toBe(false);
+    expect(isStoredTheme(null)).toBe(false);
   });
 });
 
@@ -84,5 +97,33 @@ describe('resolveSettings', () => {
       expect(result.settings.theme).toBe('dark');
       expect(result.settings.interfaceOptions).toEqual(local.interfaceOptions);
     }
+  });
+});
+
+describe('normaliseProviderSettings', () => {
+  it('returns undefined when nothing was sent, so the column is left alone', () => {
+    expect(normaliseProviderSettings(undefined)).toBeUndefined();
+  });
+
+  it('rejects payloads that are not a provider map', () => {
+    expect(normaliseProviderSettings(null)).toBe(INVALID_PROVIDER_SETTINGS);
+    expect(normaliseProviderSettings(['a'])).toBe(INVALID_PROVIDER_SETTINGS);
+    expect(normaliseProviderSettings({ 'bad name!': { settings: { enabled: true } } })).toBe(INVALID_PROVIDER_SETTINGS);
+  });
+
+  it('keeps only the synced fields and drops runtime-only data', () => {
+    const result = normaliseProviderSettings({
+      OpenAI: { settings: { enabled: true, baseUrl: 'https://x.test', models: ['a'], selectedModel: 'gpt-4o' } },
+      Anthropic: { settings: { enabled: false } },
+    });
+
+    expect(result).toEqual({
+      OpenAI: { settings: { enabled: true, baseUrl: 'https://x.test', selectedModel: 'gpt-4o' } },
+      Anthropic: { settings: { enabled: false } },
+    });
+  });
+
+  it('drops entries with nothing usable left', () => {
+    expect(normaliseProviderSettings({ Groq: { settings: { models: ['x'] } } })).toEqual({});
   });
 });

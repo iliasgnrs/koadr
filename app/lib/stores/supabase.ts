@@ -1,4 +1,5 @@
 import { atom } from 'nanostores';
+import { deleteConnectionFromAccount, saveConnectionToAccount } from '~/lib/connections-client';
 import type { SupabaseUser, SupabaseStats, SupabaseApiKey, SupabaseCredentials } from '~/types/supabase';
 
 export interface SupabaseProject {
@@ -51,36 +52,18 @@ export interface SupabaseConnectionState {
   credentials?: SupabaseCredentials;
 }
 
-const storage =
-  typeof globalThis !== 'undefined' &&
-  typeof globalThis.localStorage !== 'undefined' &&
-  typeof globalThis.localStorage.getItem === 'function'
-    ? globalThis.localStorage
-    : null;
-
-const savedConnection = storage ? storage.getItem('supabase_connection') : null;
-const savedCredentials = storage ? storage.getItem('supabaseCredentials') : null;
-
-const initialState: SupabaseConnectionState = savedConnection
-  ? JSON.parse(savedConnection)
-  : {
-      user: null,
-      token: '',
-      stats: undefined,
-      selectedProjectId: undefined,
-      isConnected: false,
-      project: undefined,
-    };
-
-if (savedCredentials && !initialState.credentials) {
-  try {
-    initialState.credentials = JSON.parse(savedCredentials);
-  } catch (e) {
-    console.error('Failed to parse saved credentials:', e);
-  }
-}
-
-export const supabaseConnection = atom<SupabaseConnectionState>(initialState);
+/*
+ * Supabase connection (PAT + project credentials) lives encrypted on the
+ * account; a fresh session starts empty and re-reads `/api/connections`.
+ */
+export const supabaseConnection = atom<SupabaseConnectionState>({
+  user: null,
+  token: '',
+  stats: undefined,
+  selectedProjectId: undefined,
+  isConnected: false,
+  project: undefined,
+});
 
 export const isConnecting = atom(false);
 export const isFetchingStats = atom(false);
@@ -123,19 +106,19 @@ export function updateSupabaseConnection(connection: Partial<SupabaseConnectionS
   supabaseConnection.set(newState);
 
   /*
-   * Always save the connection state to localStorage to persist across chats
+   * Persist on the account. The PAT and project credentials are only sent when
+   * this update carried them, since the server keeps the stored secret when a
+   * payload omits it.
    */
   if (connection.user || connection.token || connection.selectedProjectId !== undefined || connection.credentials) {
-    storage?.setItem('supabase_connection', JSON.stringify(newState));
-
-    if (newState.credentials) {
-      storage?.setItem('supabaseCredentials', JSON.stringify(newState.credentials));
-    } else {
-      storage?.removeItem('supabaseCredentials');
-    }
+    void saveConnectionToAccount('supabase', {
+      ...(newState.user ? { user: newState.user as unknown as Record<string, unknown> } : {}),
+      selectedProjectId: newState.selectedProjectId ?? '',
+      ...(newState.credentials ? { credentials: newState.credentials as unknown as Record<string, unknown> } : {}),
+      ...(connection.token ? { accessToken: connection.token } : {}),
+    });
   } else {
-    storage?.removeItem('supabase_connection');
-    storage?.removeItem('supabaseCredentials');
+    void deleteConnectionFromAccount('supabase');
   }
 }
 

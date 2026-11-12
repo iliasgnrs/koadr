@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
+import { loadConnections } from '~/lib/connections-client';
 import { logStore } from '~/lib/stores/logs';
 import {
   supabaseConnection,
@@ -33,31 +34,23 @@ export function useSupabaseConnection({ enabled = true }: { enabled?: boolean } 
         await initializeSupabaseConnection();
         console.log('useSupabaseConnection: Server-side initialization completed');
       } catch {
-        console.log('useSupabaseConnection: Server-side initialization failed, trying localStorage');
+        console.log('useSupabaseConnection: Server-side initialization failed, trying the account copy');
       }
 
-      // Then check localStorage for additional data
-      const savedConnection = localStorage.getItem('supabase_connection');
-      const savedCredentials = localStorage.getItem('supabaseCredentials');
+      // Then apply whatever the account has stored (non-secret fields only).
+      const stored = (await loadConnections()).supabase;
 
-      if (savedConnection) {
-        console.log('useSupabaseConnection: Loading from localStorage');
-
-        const parsed = JSON.parse(savedConnection);
-
-        if (savedCredentials && !parsed.credentials) {
-          parsed.credentials = JSON.parse(savedCredentials);
-        }
-
-        // Only update if we don't already have a connection from server-side
+      if (stored) {
         const currentState = supabaseConnection.get();
 
         if (!currentState.user) {
-          updateSupabaseConnection(parsed);
-        }
-
-        if (parsed.token && parsed.selectedProjectId && !parsed.credentials) {
-          fetchProjectApiKeys(parsed.selectedProjectId, parsed.token).catch(console.error);
+          updateSupabaseConnection({
+            ...(stored.user ? { user: stored.user as never } : {}),
+            ...(typeof stored.selectedProjectId === 'string' && stored.selectedProjectId
+              ? { selectedProjectId: stored.selectedProjectId }
+              : {}),
+            ...(stored.credentials ? { credentials: stored.credentials as never } : {}),
+          });
         }
       }
     };

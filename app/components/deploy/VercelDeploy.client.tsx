@@ -2,6 +2,7 @@ import { useStore } from '@nanostores/react';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { formatBuildFailureOutput } from './deployUtils';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { chatId } from '~/lib/persistence/useChatHistory';
 import type { ActionCallbackData } from '~/lib/runtime/message-parser';
 import { vercelConnection } from '~/lib/stores/vercel';
@@ -13,6 +14,7 @@ export function useVercelDeploy() {
   const [isDeploying, setIsDeploying] = useState(false);
   const vercelConn = useStore(vercelConnection);
   const currentChatId = useStore(chatId);
+  const projectTarget = useDeploymentTarget(currentChatId, 'vercelProjectId');
 
   const handleVercelDeploy = async () => {
     if (!vercelConn.user || !vercelConn.token) {
@@ -178,7 +180,7 @@ export function useVercelDeploy() {
       }
 
       // Use chatId instead of artifact.id
-      const existingProjectId = localStorage.getItem(`vercel-project-${currentChatId}`);
+      const existingProjectId = projectTarget.value as string | undefined;
 
       const response = await fetch('/api/vercel-deploy', {
         method: 'POST',
@@ -208,7 +210,7 @@ export function useVercelDeploy() {
       }
 
       if (data.project) {
-        localStorage.setItem(`vercel-project-${currentChatId}`, data.project.id);
+        projectTarget.set(data.project.id);
       }
 
       // Notify that deployment completed successfully

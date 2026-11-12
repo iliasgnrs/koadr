@@ -9,6 +9,8 @@ const store = {
   listChats: vi.fn(),
   upsertChat: vi.fn(),
   deleteChat: vi.fn(),
+  getChatSnapshot: vi.fn(),
+  setChatSnapshot: vi.fn(),
 };
 
 vi.mock('~/lib/.server/chats', async () => {
@@ -45,6 +47,8 @@ function request(method: string, body?: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   store.listChats.mockResolvedValue([]);
+  store.setChatSnapshot.mockResolvedValue(undefined);
+  store.getChatSnapshot.mockResolvedValue(null);
   store.upsertChat.mockResolvedValue(undefined);
   store.deleteChat.mockResolvedValue(undefined);
 });

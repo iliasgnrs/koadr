@@ -1,6 +1,7 @@
 import { useStore } from '@nanostores/react';
 import { useEffect } from 'react';
 import { Dialog, DialogRoot, DialogClose, DialogTitle, DialogButton } from '~/components/ui/Dialog';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { useSupabaseConnection } from '~/lib/hooks/useSupabaseConnection';
 import { chatId } from '~/lib/persistence/useChatHistory';
 import { useMCPStore } from '~/lib/stores/mcp';
@@ -29,6 +30,7 @@ export function SupabaseConnection() {
   } = useSupabaseConnection({ enabled: isSupabaseConnectorEnabled });
 
   const currentChatId = useStore(chatId);
+  const projectTarget = useDeploymentTarget(currentChatId, 'supabaseProjectId');
 
   useEffect(() => {
     const handleOpenConnectionDialog = () => {
@@ -44,7 +46,7 @@ export function SupabaseConnection() {
 
   useEffect(() => {
     if (isSupabaseConnectorEnabled && isConnected && currentChatId) {
-      const savedProjectId = localStorage.getItem(`supabase-project-${currentChatId}`);
+      const savedProjectId = projectTarget.value as string | undefined;
 
       /*
        * If there's no saved project for this chat but there is a global selected project,
@@ -52,20 +54,20 @@ export function SupabaseConnection() {
        */
       if (!savedProjectId && supabaseConn.selectedProjectId) {
         // Save the current global project to this chat
-        localStorage.setItem(`supabase-project-${currentChatId}`, supabaseConn.selectedProjectId);
+        projectTarget.set(supabaseConn.selectedProjectId);
       } else if (savedProjectId && savedProjectId !== supabaseConn.selectedProjectId) {
         selectProject(savedProjectId);
       }
     }
-  }, [isSupabaseConnectorEnabled, isConnected, currentChatId]);
+  }, [isSupabaseConnectorEnabled, isConnected, currentChatId, projectTarget, supabaseConn.selectedProjectId]);
 
   useEffect(() => {
     if (isSupabaseConnectorEnabled && currentChatId && supabaseConn.selectedProjectId) {
-      localStorage.setItem(`supabase-project-${currentChatId}`, supabaseConn.selectedProjectId);
+      projectTarget.set(supabaseConn.selectedProjectId);
     } else if (isSupabaseConnectorEnabled && currentChatId && !supabaseConn.selectedProjectId) {
-      localStorage.removeItem(`supabase-project-${currentChatId}`);
+      projectTarget.set('');
     }
-  }, [isSupabaseConnectorEnabled, currentChatId, supabaseConn.selectedProjectId]);
+  }, [isSupabaseConnectorEnabled, currentChatId, supabaseConn.selectedProjectId, projectTarget]);
 
   useEffect(() => {
     if (isSupabaseConnectorEnabled && isConnected && supabaseConn.token) {

@@ -12,6 +12,7 @@ import { requireApiUser } from '~/lib/auth-guard';
 
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{2,32}$/;
 const MAX_AVATAR_LENGTH = 400_000; // a reasonable data-URL ceiling
+const MAX_BIO_LENGTH = 500;
 
 export async function loader({ context }: LoaderFunctionArgs) {
   const user = requireApiUser(context);
@@ -24,8 +25,9 @@ export async function loader({ context }: LoaderFunctionArgs) {
   const { rows } = await getPgPool().query<{
     username: string | null;
     avatar_url: string | null;
+    bio: string | null;
     onboarding_completed_at: string | null;
-  }>('select username, avatar_url, onboarding_completed_at from public.profiles where id = $1', [user.id]);
+  }>('select username, avatar_url, bio, onboarding_completed_at from public.profiles where id = $1', [user.id]);
 
   const data = rows[0];
 
@@ -39,6 +41,7 @@ export async function loader({ context }: LoaderFunctionArgs) {
       email: user.email ?? null,
       username: data?.username ?? null,
       avatar: data?.avatar_url ?? null,
+      bio: data?.bio ?? null,
 
       /*
        * Onboarding state lives with the account. localStorage made it a property
@@ -53,7 +56,7 @@ export async function loader({ context }: LoaderFunctionArgs) {
 export async function action({ context, request }: ActionFunctionArgs) {
   const user = requireApiUser(context);
 
-  let body: { username?: unknown; avatar?: unknown; onboardingCompleted?: unknown };
+  let body: { username?: unknown; avatar?: unknown; bio?: unknown; onboardingCompleted?: unknown };
 
   // Clone: React Router consumes the original body before the action runs.
   try {
@@ -62,7 +65,7 @@ export async function action({ context, request }: ActionFunctionArgs) {
     return Response.json({ ok: false, error: 'Invalid request body' }, { status: 400 });
   }
 
-  const updates: { username?: string; avatar_url?: string | null } = {};
+  const updates: { username?: string; avatar_url?: string | null; bio?: string | null } = {};
 
   if (body.username !== undefined) {
     const username = typeof body.username === 'string' ? body.username.trim() : '';
@@ -88,6 +91,14 @@ export async function action({ context, request }: ActionFunctionArgs) {
     updates.avatar_url = body.avatar || null;
   }
 
+  if (body.bio !== undefined) {
+    if (typeof body.bio !== 'string' || body.bio.length > MAX_BIO_LENGTH) {
+      return Response.json({ ok: false, error: 'Bio is too long' }, { status: 400 });
+    }
+
+    updates.bio = body.bio.trim() || null;
+  }
+
   const markOnboarding = body.onboardingCompleted === true;
 
   if (Object.keys(updates).length === 0 && !markOnboarding) {
@@ -104,10 +115,18 @@ export async function action({ context, request }: ActionFunctionArgs) {
       `update public.profiles
           set username = coalesce($2, username),
               avatar_url = coalesce($3, avatar_url),
+              bio = case when $5::boolean then $6 else bio end,
               onboarding_completed_at = case when $4 then now() else onboarding_completed_at end,
               updated_at = now()
         where id = $1`,
-      [user.id, updates.username ?? null, updates.avatar_url ?? null, markOnboarding],
+      [
+        user.id,
+        updates.username ?? null,
+        updates.avatar_url ?? null,
+        markOnboarding,
+        body.bio !== undefined,
+        updates.bio ?? null,
+      ],
     );
 
     return Response.json({ ok: true });

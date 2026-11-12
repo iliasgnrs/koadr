@@ -3,13 +3,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogDescription, DialogRoot, DialogTitle } from '~/components/ui/Dialog';
 import { API_KEYS_UPDATED_EVENT, type ApiKeysUpdatedDetail } from '~/lib/api/apiKeys';
 import type { MCPConfig } from '~/lib/services/mcpService';
+import {
+  applyInterfaceOptions,
+  queueSettingsSync,
+  saveKeyToAccount,
+  syncSettingsFromServer,
+} from '~/lib/settings-client';
 import { useMCPStore } from '~/lib/stores/mcp';
-import { DEFAULT_AVATARS, DEFAULT_AVATAR, updateProfile } from '~/lib/stores/profile';
+import { DEFAULT_AVATARS, DEFAULT_AVATAR, saveProfileToAccount, updateProfile } from '~/lib/stores/profile';
 import { setTheme, themeStore } from '~/lib/stores/theme';
 import { THEMES, type Theme } from '~/types/theme';
 import { PROVIDER_LIST } from '~/utils/constants';
 
-const COMPLETED_KEY = 'bolt_onboarding_completed';
 const EMPTY_MCP_CONFIG = { mcpServers: {} };
 
 export function FirstRunOnboarding() {
@@ -22,19 +27,12 @@ export function FirstRunOnboarding() {
   const [mcpText, setMcpText] = useState(JSON.stringify(EMPTY_MCP_CONFIG, null, 2));
   const [selectedTheme, setSelectedTheme] = useState<Theme>(() => themeStore.get());
 
-  const [interfaceOptions, setInterfaceOptions] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('bolt_interface_options') || '{}');
-      return {
-        accentIntensity: typeof saved.accentIntensity === 'number' ? saved.accentIntensity : 50,
-        cornerRadius: ['sharp', 'soft', 'round'].includes(saved.cornerRadius) ? saved.cornerRadius : 'soft',
-        compactMode: Boolean(saved.compactMode),
-        animatedTransitions: saved.animatedTransitions !== false,
-      };
-    } catch {
-      return { accentIntensity: 50, cornerRadius: 'soft', compactMode: false, animatedTransitions: true };
-    }
-  });
+  const [interfaceOptions, setInterfaceOptions] = useState(() => ({
+    accentIntensity: 50,
+    cornerRadius: 'soft' as 'sharp' | 'soft' | 'round',
+    compactMode: false,
+    animatedTransitions: true,
+  }));
 
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,13 +47,9 @@ export function FirstRunOnboarding() {
 
     const checkFirstRun = async () => {
       /*
-       * The account decides, not the browser. This was gated on
-       * `bolt_onboarding_completed` in localStorage, so incognito — or any second
-       * device — re-ran the welcome flow for a user who had already finished it.
-       *
-       * A signed-in account is authoritative. The local flag is consulted only if
-       * the account cannot be read (offline), so the app does not flash the flow
-       * on every reload.
+       * The account decides. If it cannot be read the flow stays closed rather
+       * than guessing: a false "first run" would ask a returning user to redo
+       * setup on a flaky connection.
        */
       try {
         const response = await fetch('/api/profile', { credentials: 'same-origin' });
@@ -75,19 +69,21 @@ export function FirstRunOnboarding() {
         }
 
         if (data.profile?.onboardingCompleted) {
-          localStorage.setItem(COMPLETED_KEY, 'true');
           setOpen(false);
 
           return;
         }
 
         setOpen(true);
+
+        // Prefill appearance with whatever the account already holds.
+        const applied = await syncSettingsFromServer();
+
+        if (active && applied?.interfaceOptions) {
+          setInterfaceOptions(applied.interfaceOptions as typeof interfaceOptions);
+        }
       } catch (err) {
         console.error('Could not check first-run setup state:', err);
-
-        if (active && !localStorage.getItem(COMPLETED_KEY)) {
-          setOpen(true);
-        }
       }
     };
 
@@ -105,12 +101,7 @@ export function FirstRunOnboarding() {
   }, [open, mcpInitialized, initializeMcp]);
 
   const finish = () => {
-    /*
-     * Recorded on the account so the next device (and any incognito window)
-     * knows this is not a first run. The local flag mirrors it only so the
-     * flow does not flash before the request settles.
-     */
-    localStorage.setItem(COMPLETED_KEY, 'true');
+    // Recorded on the account, so no browser-level flag exists to lose.
     setOpen(false);
 
     void fetch('/api/profile', {
@@ -135,6 +126,7 @@ export function FirstRunOnboarding() {
     if (providerName && apiKey.trim()) {
       const apiKeys = { ...keys, [providerName]: apiKey.trim() };
       Cookies.set('apiKeys', JSON.stringify(apiKeys), { expires: 365 });
+      void saveKeyToAccount(providerName, apiKey.trim());
       window.dispatchEvent(
         new CustomEvent<ApiKeysUpdatedDetail>(API_KEYS_UPDATED_EVENT, { detail: { apiKeys, providerName } }),
       );
@@ -146,8 +138,10 @@ export function FirstRunOnboarding() {
 
     if (step === 0 && name.trim()) {
       updateProfile({ username: name.trim(), avatar });
+      void saveProfileToAccount({ username: name.trim(), avatar });
     } else if (step === 0) {
       updateProfile({ avatar });
+      void saveProfileToAccount({ avatar });
     }
 
     if (step === 1) {
@@ -177,14 +171,8 @@ export function FirstRunOnboarding() {
 
     if (step === 3) {
       setTheme(selectedTheme);
-      localStorage.setItem('bolt_interface_options', JSON.stringify(interfaceOptions));
-
-      const root = document.documentElement;
-      root.dataset.accentIntensity = String(interfaceOptions.accentIntensity);
-      root.style.setProperty('--interface-accent-strength', `${interfaceOptions.accentIntensity}%`);
-      root.dataset.cornerRadius = interfaceOptions.cornerRadius;
-      root.dataset.compactMode = String(interfaceOptions.compactMode);
-      root.dataset.animatedTransitions = String(interfaceOptions.animatedTransitions);
+      applyInterfaceOptions(interfaceOptions);
+      queueSettingsSync();
     }
 
     if (step >= 3) {

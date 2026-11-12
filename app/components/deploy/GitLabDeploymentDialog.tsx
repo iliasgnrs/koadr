@@ -5,9 +5,10 @@ import { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { GitLabAuthDialog } from '~/components/@settings/tabs/gitlab/components/GitLabAuthDialog';
 import { SearchInput, EmptyState, StatusIndicator, Badge } from '~/components/ui';
-import { getLocalStorage } from '~/lib/persistence/localStorage';
+import { useDeploymentTarget } from '~/lib/hooks/useDeploymentTargets';
 import { chatId } from '~/lib/persistence/useChatHistory';
 import { GitLabApiService } from '~/lib/services/gitlabApiService';
+import { gitlabConnection } from '~/lib/stores/gitlabConnection';
 import { logStore } from '~/lib/stores/logs';
 import type { GitLabUserResponse, GitLabProjectInfo } from '~/types/GitLab';
 import { classNames } from '~/utils/classNames';
@@ -34,11 +35,12 @@ export function GitLabDeploymentDialog({ isOpen, onClose, projectName, files }: 
   const [pushedFiles, setPushedFiles] = useState<{ path: string; size: number }[]>([]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const currentChatId = useStore(chatId);
+  const repoTarget = useDeploymentTarget(currentChatId, 'gitlabRepo');
 
   // Load GitLab connection on mount
   useEffect(() => {
     if (isOpen) {
-      const connection = getLocalStorage('gitlab_connection');
+      const connection = gitlabConnection.get();
 
       // Set a default repository name based on the project name
       setRepoName(projectName.replace(/\s+/g, '-').toLowerCase());
@@ -103,7 +105,7 @@ export function GitLabDeploymentDialog({ isOpen, onClose, projectName, files }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const connection = getLocalStorage('gitlab_connection');
+    const connection = gitlabConnection.get();
 
     if (!connection?.token || !connection?.user) {
       toast.error('Please connect your GitLab account in Settings > Connections first');
@@ -183,15 +185,12 @@ export function GitLabDeploymentDialog({ isOpen, onClose, projectName, files }: 
       setPushedFiles(fileList);
       setShowSuccessDialog(true);
 
-      // Save repository info
-      localStorage.setItem(
-        `gitlab-repo-${currentChatId}`,
-        JSON.stringify({
-          owner: connection.user.username,
-          name: sanitizedRepoName,
-          url: createdRepoUrl,
-        }),
-      );
+      // Save repository info on the chat, so another device sees it too.
+      repoTarget.set({
+        owner: connection.user.username,
+        name: sanitizedRepoName,
+        url: createdRepoUrl,
+      });
 
       logStore.logInfo('GitLab deployment completed successfully', {
         type: 'system',
@@ -253,7 +252,7 @@ export function GitLabDeploymentDialog({ isOpen, onClose, projectName, files }: 
     setShowAuthDialog(false);
 
     // Refresh user data after auth
-    const connection = getLocalStorage('gitlab_connection');
+    const connection = gitlabConnection.get();
 
     if (connection?.user && connection?.token) {
       setUser(connection.user);

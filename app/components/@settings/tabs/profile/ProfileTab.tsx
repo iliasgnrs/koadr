@@ -15,10 +15,8 @@ export default function ProfileTab() {
     debounce((field: 'username' | 'bio', value: string) => {
       updateProfile({ [field]: value });
 
-      if (field === 'username') {
-        // Mirror to the account so the name follows the user to another device.
-        void saveProfileToAccount({ username: value });
-      }
+      // The account is the only copy, so both fields go up.
+      void saveProfileToAccount({ [field]: value });
 
       toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated`);
     }, 1000),
@@ -69,6 +67,7 @@ export default function ProfileTab() {
 
   const handleChooseAvatar = (avatar: string) => {
     updateProfile({ avatar });
+    void saveProfileToAccount({ avatar });
     setIsAvatarPickerOpen(false);
     toast.success('Profile avatar updated');
   };

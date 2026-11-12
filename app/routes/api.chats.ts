@@ -1,5 +1,13 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from 'react-router';
-import { ChatOwnershipError, deleteChat, listChats, upsertChat, type StoredChat } from '~/lib/.server/chats';
+import {
+  ChatOwnershipError,
+  deleteChat,
+  getChatSnapshot,
+  listChats,
+  setChatSnapshot,
+  upsertChat,
+  type StoredChat,
+} from '~/lib/.server/chats';
 import { requireApiUser } from '~/lib/auth-guard';
 
 /*
@@ -15,8 +23,23 @@ function fail(message: string, status = 400) {
   return Response.json({ ok: false, error: message }, { status });
 }
 
-export async function loader({ context }: LoaderFunctionArgs) {
+export async function loader({ context, request }: LoaderFunctionArgs) {
   const user = requireApiUser(context);
+
+  /*
+   * `?snapshot=<chatId>` reads one chat's project snapshot (files at save time),
+   * which used to be a localStorage key. Kept on the same route so the client
+   * has a single history endpoint.
+   */
+  const snapshotId = new URL(request.url).searchParams.get('snapshot');
+
+  if (snapshotId) {
+    try {
+      return Response.json({ ok: true, snapshot: await getChatSnapshot(user.id, snapshotId) });
+    } catch (error) {
+      return fail(error instanceof Error ? error.message : 'Could not load snapshot', 500);
+    }
+  }
 
   try {
     return Response.json({ ok: true, chats: await listChats(user.id) });
@@ -69,7 +92,10 @@ export async function action({ context, request }: ActionFunctionArgs) {
       return fail(`A chat may hold at most ${MAX_MESSAGES} messages`);
     }
 
-    await upsertChat(user.id, { ...chat, messages: chat.messages });
+    const { snapshot, ...rest } = chat as StoredChat & { snapshot?: unknown };
+
+    await upsertChat(user.id, { ...rest, messages: chat.messages });
+    await setChatSnapshot(user.id, chat.id, snapshot);
 
     return Response.json({ ok: true });
   } catch (error) {
