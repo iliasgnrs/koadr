@@ -178,3 +178,35 @@ export function normaliseProviderSettings(
 
   return result;
 }
+
+/**
+ * Fold the account's provider map onto the local store.
+ *
+ * A written map is authoritative: anything it does not list is disabled, so a
+ * user who enabled only one provider does not keep the four defaults on the next
+ * load. An empty map means "never saved", and leaves the defaults untouched.
+ */
+export function applyProviderSettings<T extends { settings: object }>(
+  current: Record<string, T>,
+  saved: Record<string, { settings?: object }>,
+): Record<string, T> {
+  const hasSavedChoice = Object.keys(saved).length > 0;
+
+  return Object.fromEntries(
+    Object.entries(current).map(([name, provider]) => {
+      const entry = saved[name];
+
+      return [
+        name,
+        {
+          ...provider,
+          settings: {
+            ...provider.settings,
+            ...entry?.settings,
+            ...(hasSavedChoice && !entry ? { enabled: false } : {}),
+          },
+        },
+      ];
+    }),
+  ) as Record<string, T>;
+}

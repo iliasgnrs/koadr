@@ -140,17 +140,39 @@ export const ChatImpl = memo(
     );
 
     // const _supabaseAlert = undefined;
-    const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
+    const {
+      activeProviders,
+      providers,
+      promptId,
+      autoSelectTemplate,
+      contextOptimizationEnabled,
+      updateSelectedModel,
+    } = useSettings();
+
     const [llmErrorAlert, setLlmErrorAlert] = useState<LlmErrorAlertType | undefined>(undefined);
 
     const [model, setModel] = useState(() => {
-      const savedModel = Cookies.get('selectedModel');
-      return savedModel || DEFAULT_MODEL;
+      // Cookie is a pre-sync cache; the account copy lands with the settings sync.
+      return Cookies.get('selectedModel') || DEFAULT_MODEL;
     });
     const [provider, setProvider] = useState(() => {
       const savedProvider = Cookies.get('selectedProvider');
       return (PROVIDER_LIST.find((p) => p.name === savedProvider) || DEFAULT_PROVIDER) as ProviderInfo;
     });
+
+    /*
+     * The account copy of the model choice is authoritative once the settings
+     * sync lands: the cookie is only this device's cache. This is what makes a
+     * phone open on the model picked on the desktop.
+     */
+    useEffect(() => {
+      const stored = providers[provider.name]?.settings.selectedModel;
+
+      if (typeof stored === 'string' && stored) {
+        setModel((current) => (current === stored ? current : stored));
+        Cookies.set('selectedModel', stored, { expires: 30 });
+      }
+    }, [providers, provider.name]);
 
     const { showChat } = useStore(chatStore);
     const [animationScope, animate] = useAnimate();
@@ -1153,6 +1175,7 @@ export const ChatImpl = memo(
     const handleModelChange = (newModel: string) => {
       setModel(newModel);
       Cookies.set('selectedModel', newModel, { expires: 30 });
+      updateSelectedModel(provider.name, newModel);
     };
 
     const handleProviderChange = (newProvider: ProviderInfo) => {

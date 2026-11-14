@@ -6,8 +6,9 @@ competes with the WordPress stack for RAM).
 
 `ssh adapedu-vps` → `root@91.98.89.225`. The stack lives at `/opt/koadr`.
 
-**Currently running:** `koadr-web:orangetheme`. The previous release is
-`koadr-web:authparticles`, so a rollback needs no re-upload.
+**Currently running:** `koadr-web:modelsync`. No earlier tag is kept on the host — the
+image list is pruned after each deploy, so a rollback needs that image re-uploaded
+(`docker save` locally, or a fresh build of the previous commit).
 
 ## 1. Build
 
@@ -71,6 +72,10 @@ To prove the *right* build is live, fetch the asset the page references and grep
 string from the change:
 
 ```bash
+# Assets are immutable for a year; a browser can keep an old chunk after a deploy.
+# Bypass the Cloudflare cache (or Dev Mode) before judging a client-side fix.
+curl -sH 'Cache-Control: no-cache' -b cookies.jar https://app.koadr.dev/ \
+  | grep -o '/assets/[^"]*\.js' | sort -u
 A=$(curl -s https://app.koadr.dev/login | grep -o '/assets/Chat.client-[^"]*\.js' | head -1)
 curl -s "https://app.koadr.dev$A" | grep -c "<a string from the change>"   # expect ≥ 1
 ```
@@ -91,7 +96,17 @@ ssh adapedu-vps 'docker rmi koadr-web:<tag-to-drop>'
 ```
 
 `docker image prune` does not help — it only removes dangling (untagged) images, and
-these are all tagged.
+these are all tagged. Use `docker image prune -a`, which removes every image not used by
+a running container (~28 GB across six releases). It also drops other stacks' rollback
+tags (`wphosting-php:rollback-*`, `adapedu-web:rollback-*`), so decide per host rather
+than by habit.
+
+The image can also be streamed without a temp file on either side — same result, no
+`/tmp` space needed:
+
+```bash
+docker save koadr-web:<tag> | gzip -1 | ssh adapedu-vps 'gunzip | docker load'
+```
 
 ## Theme changes
 
@@ -114,9 +129,34 @@ Persisted values are migrated, never rejected: `normaliseTheme()` maps any legac
 pre-hydration script, in `resolveSettings`, and in `POST /api/settings` — keep those four
 in sync if the model changes again.
 
+## Account settings sync
+
+Every user-scoped setting lives on the account row, so a second device renders the same
+state: `theme` and `interface_options` on `user_settings`, provider choices (enabled
+flags, base URLs, `selectedModel`) in `user_settings.provider_settings`, and API keys
+encrypted in `api_keys`. The browser keeps no authoritative copy — only a pre-sync cache
+cookie, which the account overwrites on load.
+
+Two rules in `app/lib/settings-sync.ts` are load-bearing:
+
+- `applyProviderSettings` treats a **written** provider map as authoritative. A provider
+  the account does not list is disabled; otherwise the four defaults
+  (OpenRouter/Anthropic/OpenAI/Google) survive a user who enabled only one. An **empty**
+  map means "never saved", so the defaults stand until the first toggle is written.
+- Environment-configured local providers are auto-enabled only while the account has no
+  saved provider settings (`markProviderSettingsStored`).
+
+Provider keys are write-only: `.env` variables lose to a key saved in the UI, and the
+badge in the chat box reads `GET /api/settings/keys?provider=…`, which returns only
+`{ configured, hint }`.
+
 ## Rollback
 
 ```bash
 ssh adapedu-vps 'cd /opt/koadr && cp docker-compose.yml.bak-<tag> docker-compose.yml \
   && docker compose -p koadr up -d'
 ```
+
+The `.bak-<tag>` file still names the tag it replaced, so a rollback needs that image to
+be present on the host. Images are pruned aggressively; confirm with
+`docker images | grep koadr-web` before relying on one.

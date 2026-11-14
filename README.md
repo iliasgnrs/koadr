@@ -93,7 +93,13 @@ Koadr is also available as a cross-platform desktop application:
 You can configure model providers either directly in the UI or via environment variables:
 
 ### Option A: In the UI (Recommended)
-Click the **Settings** icon (⚙️) in the sidebar → **Providers**. Enter your API keys or configure local endpoints (Ollama, LM Studio, OpenAI-compatible). Keys are validated in real time and stored securely in your browser cookies.
+Click the **Settings** icon (⚙️) in the sidebar → **Providers**. Enter your API keys or configure local endpoints (Ollama, LM Studio, OpenAI-compatible).
+
+Keys are encrypted on the account (`api_keys`, never returned to the browser), and the provider choices — enabled providers, base URLs and the selected model — live on `user_settings.provider_settings`. Signing in on a second device or browser therefore shows the same providers, model and API keys; nothing user-scoped is kept in cookies.
+
+API keys take precedence over environment variables: a key saved in the UI is used for that account even when the same provider is also configured in `.env`.
+
+Only the browser-local cache of the *selection* (not the keys) is device-specific, and the account copy overwrites it on load.
 
 ### Option B: Environment Variables
 Copy `.env.example` to `.env.local` and add your keys or local endpoints:

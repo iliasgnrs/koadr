@@ -7,6 +7,7 @@ import { logStore } from '~/lib/stores/logs';
 import {
   isDebugMode,
   isEventLogsEnabled,
+  LOCAL_PROVIDERS,
   promptStore,
   providersStore,
   latestBranchStore,
@@ -15,6 +16,7 @@ import {
   tabConfigurationStore,
   resetTabConfiguration as resetTabConfig,
   updateProviderSettings as updateProviderSettingsStore,
+  updateSelectedModel as updateSelectedModelStore,
   updateLatestBranch,
   updateAutoSelectTemplate,
   updateContextOptimization,
@@ -45,6 +47,7 @@ export interface UseSettingsReturn {
   providers: Record<string, IProviderConfig>;
   activeProviders: ProviderInfo[];
   updateProviderSettings: (provider: string, config: IProviderSetting) => void;
+  updateSelectedModel: (provider: string, model: string) => void;
 
   // Debug and development settings
   debug: boolean;
@@ -110,6 +113,10 @@ export function useSettings(): UseSettingsReturn {
     updateProviderSettingsStore(provider, config);
   }, []);
 
+  const updateSelectedModel = useCallback((provider: string, model: string) => {
+    updateSelectedModelStore(provider, model);
+  }, []);
+
   const enableDebugMode = useCallback((enabled: boolean) => {
     isDebugMode.set(enabled);
     logStore.logSystem(`Debug mode ${enabled ? 'enabled' : 'disabled'}`);
@@ -170,12 +177,24 @@ export function useSettings(): UseSettingsReturn {
   );
 
   useEffect(() => {
+    /*
+     * Signed-out local models (Ollama and friends) still read their base URLs
+     * from this cookie: `/api/chat` and `/api/llmcall` accept it for those
+     * providers. Everything else — enabled flags, selected models — lives only
+     * on the account, because a cookie copy goes stale on every other device.
+     */
     const providers = providersStore.get();
-    const providerSetting: Record<string, IProviderSetting> = {}; // preserve the entire settings object for each provider
-    Object.keys(providers).forEach((provider) => {
-      providerSetting[provider] = providers[provider].settings;
+    const localOnly: Record<string, IProviderSetting> = {};
+
+    LOCAL_PROVIDERS.forEach((name) => {
+      const entry = providers[name];
+
+      if (entry) {
+        localOnly[name] = { baseUrl: entry.settings.baseUrl };
+      }
     });
-    Cookies.set('providers', JSON.stringify(providerSetting));
+
+    Cookies.set('providers', JSON.stringify(localOnly));
   }, [providers]);
 
   return {
@@ -183,6 +202,7 @@ export function useSettings(): UseSettingsReturn {
     providers,
     activeProviders,
     updateProviderSettings,
+    updateSelectedModel,
     debug,
     enableDebugMode,
     eventLogs,

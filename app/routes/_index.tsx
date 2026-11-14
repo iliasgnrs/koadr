@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { LoaderFunctionArgs, MetaFunction } from 'react-router';
+import { type LoaderFunctionArgs, type MetaFunction } from 'react-router';
 import { ClientOnly } from 'remix-utils/client-only';
 import { BaseChat } from '~/components/chat/BaseChat';
 import { Chat } from '~/components/chat/Chat.client';
@@ -9,10 +9,11 @@ import BackgroundRays from '~/components/ui/BackgroundRays';
 import { requireUser } from '~/lib/auth-guard';
 import { loadConnections } from '~/lib/connections-client';
 import { beginApplyingRemote, endApplyingRemote, syncSettingsFromServer } from '~/lib/settings-client';
+import { applyProviderSettings } from '~/lib/settings-sync';
 import { hydrateGitHubConnection } from '~/lib/stores/githubConnection';
 import { hydrateGitLabConnection } from '~/lib/stores/gitlabConnection';
 import { hydrateProfileFromAccount } from '~/lib/stores/profile';
-import { initializeProviders, providersStore, type ProviderSetting } from '~/lib/stores/settings';
+import { initializeProviders, providersStore } from '~/lib/stores/settings';
 import { setTheme } from '~/lib/stores/theme';
 
 export const meta: MetaFunction = () => {
@@ -71,7 +72,17 @@ export default function Index() {
     let cancelled = false;
 
     void syncSettingsFromServer().then((applied) => {
-      if (cancelled || !applied) {
+      if (!applied) {
+        /*
+         * The account could not be read (offline). Auto-enable still runs, but
+         * nothing is saved, so it cannot overwrite a stored choice later.
+         */
+        void initializeProviders();
+
+        return;
+      }
+
+      if (cancelled) {
         return;
       }
 
@@ -92,22 +103,20 @@ export default function Index() {
 
       /*
        * Providers are not covered by setTheme, so the store is updated here.
+       *
+       * A written map is authoritative: a provider the account does not list is
+       * disabled, otherwise the defaults (OpenRouter/Anthropic/OpenAI/Google)
+       * would survive a user who enabled only one provider. An empty map means
+       * the account never saved a choice, so the defaults stand until the first
+       * toggle is written.
        */
       if (applied.providerSettings) {
-        /*
-         * The account is the base: providers it enables/disabled replace local
-         * flags, while entries it does not know about keep their defaults.
-         */
-        const current = providersStore.get();
-        const next = { ...current };
-
-        for (const [name, entry] of Object.entries(applied.providerSettings as ProviderSetting)) {
-          if (current[name]) {
-            next[name] = { ...current[name], settings: { ...current[name].settings, ...entry.settings } };
-          }
-        }
-
-        providersStore.set(next);
+        providersStore.set(
+          applyProviderSettings(
+            providersStore.get(),
+            applied.providerSettings as Record<string, { settings?: object }>,
+          ),
+        );
       }
 
       /*

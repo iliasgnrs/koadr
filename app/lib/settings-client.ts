@@ -196,8 +196,12 @@ export async function syncSettingsFromServer(): Promise<{
     void useMCPStore.getState().initialize();
   }
 
-  queueSettingsSync();
-
+  /*
+   * The account copy is now in place. Pushing it straight back would let a
+   * device that loaded first overwrite newer values from another device (for
+   * example an interface-option drag on a phone), so the next write is left to
+   * the component that actually changes something.
+   */
   return applied;
 }
 
@@ -232,5 +236,29 @@ export async function saveKeyToAccount(provider: string, key: string): Promise<b
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether the account already holds a key for this provider.
+ *
+ * Keys are write-only, so the chat box cannot read one back on a second device;
+ * this asks the server and only the masked hint crosses the wire.
+ */
+export async function fetchKeyHint(provider: string): Promise<string | null> {
+  try {
+    const response = await fetch(`/api/settings/keys?provider=${encodeURIComponent(provider)}`, {
+      credentials: 'same-origin',
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { configured?: boolean; hint?: string | null };
+
+    return data.configured ? (data.hint ?? 'stored') : null;
+  } catch {
+    return null;
   }
 }

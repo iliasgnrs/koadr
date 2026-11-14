@@ -1,7 +1,7 @@
 import Cookies from 'js-cookie';
 import React, { useState, useEffect, useCallback } from 'react';
 import { IconButton } from '~/components/ui/IconButton';
-import { saveKeyToAccount } from '~/lib/settings-client';
+import { fetchKeyHint, saveKeyToAccount } from '~/lib/settings-client';
 import type { ProviderInfo } from '~/types/model';
 
 interface APIKeyManagerProps {
@@ -39,6 +39,12 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
   const [tempKey, setTempKey] = useState(apiKey);
   const [isEnvKeySet, setIsEnvKeySet] = useState(false);
 
+  /*
+   * Keys are stored encrypted on the account and never sent back, so another
+   * device only learns that this provider is configured — never the key itself.
+   */
+  const [storedHint, setStoredHint] = useState<string | null>(null);
+
   // Reset states and load saved key when provider changes
   useEffect(() => {
     // Load saved API key from cookies for this provider
@@ -75,6 +81,21 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     checkEnvApiKey();
   }, [checkEnvApiKey]);
 
+  useEffect(() => {
+    let active = true;
+
+    setStoredHint(null);
+    void fetchKeyHint(provider.name).then((hint) => {
+      if (active) {
+        setStoredHint(hint);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [provider.name]);
+
   const handleSave = () => {
     // Save to parent state
     setApiKey(tempKey);
@@ -85,6 +106,10 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
     Cookies.set('apiKeys', JSON.stringify(newKeys));
 
     void saveKeyToAccount(provider.name, tempKey);
+
+    if (tempKey) {
+      setStoredHint('stored');
+    }
 
     setIsEditing(false);
   };
@@ -100,6 +125,13 @@ export const APIKeyManager: React.FC<APIKeyManagerProps> = ({ provider, apiKey, 
                 <>
                   <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
                   <span className="text-xs text-green-500">Set via UI</span>
+                </>
+              ) : storedHint ? (
+                <>
+                  <div className="i-ph:check-circle-fill text-green-500 w-4 h-4" />
+                  <span className="text-xs text-green-500">
+                    {storedHint === 'stored' ? 'Saved to your account' : `Saved to your account (${storedHint})`}
+                  </span>
                 </>
               ) : isEnvKeySet ? (
                 <>

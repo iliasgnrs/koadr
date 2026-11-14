@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyProviderSettings,
   DEFAULT_INTERFACE_OPTIONS,
   INVALID_PROVIDER_SETTINGS,
   isKnownTheme,
@@ -125,5 +126,34 @@ describe('normaliseProviderSettings', () => {
 
   it('drops entries with nothing usable left', () => {
     expect(normaliseProviderSettings({ Groq: { settings: { models: ['x'] } } })).toEqual({});
+  });
+});
+
+describe('applyProviderSettings', () => {
+  const store = () => ({
+    OpenRouter: { settings: { enabled: true } },
+    Anthropic: { settings: { enabled: true } },
+    OpenAI: { settings: { enabled: true } },
+    Google: { settings: { enabled: true } },
+    Deepseek: { settings: { enabled: false } },
+  });
+
+  it('disables defaults the account does not list', () => {
+    const next = applyProviderSettings(store(), { Deepseek: { settings: { enabled: true } } });
+
+    expect(Object.keys(next).filter((name) => next[name].settings.enabled)).toEqual(['Deepseek']);
+  });
+
+  it('leaves the defaults alone when the account never saved a choice', () => {
+    const next = applyProviderSettings(store(), {});
+
+    expect(next.OpenRouter.settings.enabled).toBe(true);
+    expect(next.Deepseek.settings.enabled).toBe(false);
+  });
+
+  it('keeps a provider the account explicitly disabled', () => {
+    const next = applyProviderSettings(store(), { OpenRouter: { settings: { enabled: false } } });
+
+    expect(next.OpenRouter.settings.enabled).toBe(false);
   });
 });

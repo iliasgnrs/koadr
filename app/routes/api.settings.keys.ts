@@ -9,11 +9,26 @@ import { requireApiUser } from '~/lib/auth-guard';
 
 const PROVIDER_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 
-export async function loader({ context }: LoaderFunctionArgs) {
+export async function loader({ context, request }: LoaderFunctionArgs) {
   const user = requireApiUser(context);
 
+  /*
+   * `?provider=` answers the single question the chat box needs: "does this
+   * account already hold a key for this provider?" It returns only the masked
+   * hint, so a stored key can be recognised without ever sending it back.
+   */
+  const provider = new URL(request.url).searchParams.get('provider');
+
   try {
-    return Response.json({ ok: true, keys: await listApiKeys(user.id) });
+    const keys = await listApiKeys(user.id);
+
+    if (!provider) {
+      return Response.json({ ok: true, keys });
+    }
+
+    const match = keys.find((entry) => entry.provider === provider);
+
+    return Response.json({ ok: true, configured: Boolean(match), hint: match?.hint ?? null });
   } catch (error) {
     return Response.json(
       { ok: false, error: error instanceof Error ? error.message : 'Could not list keys' },

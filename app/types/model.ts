@@ -18,6 +18,9 @@ export interface IProviderSetting {
   enabled?: boolean;
   baseUrl?: string;
   OPENAI_LIKE_API_MODELS?: string;
+
+  /** Last model picked for this provider; synced so a second device matches. */
+  selectedModel?: string;
 }
 
 export type IProviderConfig = ProviderInfo & {

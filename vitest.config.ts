@@ -46,6 +46,7 @@ const DOM_TESTS = [
   'app/lib/api/cookies.spec.ts',
   'app/lib/persistence/chatCache.spec.ts',
   'app/lib/services/importExportService.spec.ts',
+  'app/lib/stores/settings.spec.ts',
   'app/lib/stores/workbench.spec.ts',
 
   /*

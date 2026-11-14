@@ -117,6 +117,16 @@ const autoEnableConfiguredProviders = async () => {
 
   try {
     const configuredProviders = await fetchConfiguredProviders();
+
+    /*
+     * Providers are only auto-enabled on an account that has never saved a
+     * choice. Without this guard a load that raced the settings sync could
+     * enable defaults on top of a user's selection and then save that back.
+     */
+    if (hasStoredProviderSettings) {
+      return;
+    }
+
     const currentSettings = providersStore.get();
     const newlyAutoEnabled: string[] = [];
 
@@ -126,25 +136,16 @@ const autoEnableConfiguredProviders = async () => {
       if (isConfigured && configMethod === 'environment' && LOCAL_PROVIDERS.includes(name)) {
         const currentProvider = currentSettings[name];
 
-        if (currentProvider) {
-          /*
-           * Only auto-enable a provider that is still off, and only while the
-           * account has no saved provider settings at all. Once the user has
-           * toggled anything on any device, their choice wins everywhere.
-           */
-          const shouldAutoEnable = !currentProvider.settings.enabled && !hasStoredProviderSettings;
-
-          if (shouldAutoEnable) {
-            currentSettings[name] = {
-              ...currentProvider,
-              settings: {
-                ...currentProvider.settings,
-                enabled: true,
-              },
-            };
-            newlyAutoEnabled.push(name);
-            hasChanges = true;
-          }
+        if (currentProvider && !currentProvider.settings.enabled) {
+          currentSettings[name] = {
+            ...currentProvider,
+            settings: {
+              ...currentProvider.settings,
+              enabled: true,
+            },
+          };
+          newlyAutoEnabled.push(name);
+          hasChanges = true;
         }
       }
     });
@@ -165,7 +166,11 @@ export const providersStore = map<ProviderSetting>(getInitialProviderSettings())
 // Export the auto-enable function for use in components
 export const initializeProviders = autoEnableConfiguredProviders;
 
-// Create a function to update provider settings that handles both store and persistence
+/*
+ * Model selection is per device only as a cache: the account copy in
+ * `provider_settings` is what a second browser reads, so a phone sees the model
+ * picked on the desktop.
+ */
 export const updateProviderSettings = (provider: string, settings: ProviderSetting) => {
   const currentSettings = providersStore.get();
   const currentProvider = currentSettings[provider];
@@ -189,8 +194,30 @@ export const updateProviderSettings = (provider: string, settings: ProviderSetti
 
   /*
    * Mirror to the account. The write is debounced and only runs when signed in
-   * (401 is ignored), so a toggle does not fire a request per click.
+   * (401 is ignored), so a toggle does not fire a request per click. It runs even
+   * for an account with no row yet: this edit is the first choice being saved.
    */
+  void pushSettings();
+};
+
+/**
+ * Record the model chosen for a provider on the account.
+ *
+ * `selectedModel` is already whitelisted by `/api/settings`, so this only has to
+ * keep the store in step; the debounced push writes it to `provider_settings`.
+ */
+export const updateSelectedModel = (provider: string, model: string) => {
+  const current = providersStore.get()[provider];
+
+  if (!current || current.settings.selectedModel === model) {
+    return;
+  }
+
+  providersStore.setKey(provider, {
+    ...current,
+    settings: { ...current.settings, selectedModel: model },
+  });
+  markProviderSettingsStored(true);
   void pushSettings();
 };
 
